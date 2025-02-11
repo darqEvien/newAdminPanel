@@ -7,11 +7,21 @@ import {
   endBefore,
   get, 
   update, 
-  remove 
+  remove,
+  push,
+  set
 } from 'firebase/database';
 import { database } from '../firebase/firebaseConfig';
 import Sidebar from '../components/Sidebar';
 import OrderCard from '../components/OrderCard';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 
 const ORDERS_PER_PAGE = 12;
 const INITIAL_FETCH_COUNT = ORDERS_PER_PAGE;
@@ -100,13 +110,55 @@ const OrdersPage = () => {
 
   const handleApprove = useCallback(async (orderId) => {
     try {
+      const orderRef = ref(database, `crafter-orders/${orderId}`);
+      const snapshot = await get(orderRef);
+      const orderData = snapshot.val();
+  
+      if (!orderData) {
+        throw new Error('Sipariş bulunamadı');
+      }
+  
+      // Önce ürünleri düzenle
+      const simplifiedProducts = {};
+      if (orderData.products) {
+        Object.entries(orderData.products).forEach(([categoryName, categoryData]) => {
+          if (categoryData.selected && categoryData.products) {
+            simplifiedProducts[categoryName] = categoryData.products;
+          }
+        });
+      }
+  
+      // Customers koleksiyonu için yeni veri yapısı
+      const customerData = {
+        fullName: orderData.fullName,
+        phone: orderData.phone,
+        email: orderData.email || null,
+        message: orderData.message || null,
+        dimensions: orderData.dimensions || null,
+        products: simplifiedProducts,
+        totalPrice: orderData.totalPrice,
+        pdfUrl: orderData.pdfUrl || null,
+        from: 'crafter-orders',
+        condition: 'verified',
+        createdAt: orderData.createdAt,
+        verifiedAt: new Date().toISOString(),
+        orderId: orderId // orijinal sipariş ID'sini referans olarak sakla
+      };
+  
+      // Customers'a ekle
+      const customersRef = ref(database, 'customers');
+      const newCustomerRef = push(customersRef);
+      await set(newCustomerRef, customerData);
+  
+      // Orijinal siparişi güncelle
       const updates = {
         condition: 'onaylandı',
-        updatedAt: createISOString()
+        updatedAt: new Date().toISOString()
       };
-
-      await update(ref(database, `crafter-orders/${orderId}`), updates);
+  
+      await update(orderRef, updates);
       
+      // Local state'i güncelle
       setOrders(prev => 
         prev.map(order => 
           order.id === orderId 
@@ -114,21 +166,14 @@ const OrdersPage = () => {
             : order
         )
       );
+  
     } catch (err) {
       console.error('Order approval error:', err);
       setError('Sipariş onaylanırken bir hata oluştu');
     }
   }, []);
 
-  const handleDelete = useCallback(async (orderId) => {
-    try {
-      await remove(ref(database, `crafter-orders/${orderId}`));
-      setOrders(prev => prev.filter(order => order.id !== orderId));
-    } catch (err) {
-      console.error('Order deletion error:', err);
-      setError('Sipariş silinirken bir hata oluştu');
-    }
-  }, []);
+
 
   const formatDate = useCallback((dateString) => {
     const date = new Date(dateString);
@@ -142,9 +187,58 @@ const OrdersPage = () => {
     }).format(date);
   }, []);
 
+  const [deleteDialog, setDeleteDialog] = useState({ isOpen: false, orderId: null });
+
+  // Silme dialog'unu açma fonksiyonu
+  const handleDeleteClick = useCallback((orderId) => {
+    setDeleteDialog({ isOpen: true, orderId });
+  }, []);
+
+  // Silme işlemini onaylama
+  const handleConfirmDelete = useCallback(async () => {
+    if (!deleteDialog.orderId) return;
+
+    try {
+      await remove(ref(database, `crafter-orders/${deleteDialog.orderId}`));
+      setOrders(prev => prev.filter(order => order.id !== deleteDialog.orderId));
+      setDeleteDialog({ isOpen: false, orderId: null });
+    } catch (err) {
+      console.error('Order deletion error:', err);
+      setError('Sipariş silinirken bir hata oluştu');
+    }
+  }, [deleteDialog.orderId]);
+
+  // Dialog'u kapatma
+  const handleCancelDelete = useCallback(() => {
+    setDeleteDialog({ isOpen: false, orderId: null });
+  }, []);
   return (
     <div className="flex min-h-screen">
       <Sidebar />
+      <Dialog open={deleteDialog.isOpen} onOpenChange={handleCancelDelete}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Siparişi Sil</DialogTitle>
+            <DialogDescription>
+              Bu siparişi silmek istediğinizden emin misiniz? Bu işlem geri alınamaz.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+  <button
+    onClick={handleCancelDelete}
+    className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 rounded-md hover:bg-gray-200 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800"
+  >
+    İptal
+  </button>
+  <button
+    onClick={handleConfirmDelete}
+    className="ml-3 px-4 py-2 text-sm font-medium text-white bg-red-600 dark:bg-red-500 rounded-md hover:bg-red-700 dark:hover:bg-red-600 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800"
+  >
+    Sil
+  </button>
+</DialogFooter>
+        </DialogContent>
+      </Dialog>
       <main className="flex-1 p-6 bg-white dark:bg-gray-800 ml-64">
         <header className="mb-8">
           <h1 className="text-3xl font-bold text-gray-800 dark:text-white">
@@ -166,7 +260,7 @@ const OrdersPage = () => {
                 formattedDate: formatDate(order.createdAt)
               }}
               onApprove={handleApprove}
-              onDelete={handleDelete}
+              onDelete={handleDeleteClick} 
             />
           ))}
         </section>
