@@ -5,6 +5,7 @@ import ProductPage from './pages/ProductPage';
 import OrdersPage from './pages/OrdersPage';
 import CategoryPage from './pages/CategoryPage';
 import Dashboard from './pages/Dashboard';
+import CustomerPage from './pages/CustomerPage';
 
 const App = () => {
   return (
@@ -17,6 +18,7 @@ const App = () => {
             <Route path="/categories" element={<CategoryPage />} />
             <Route path="/products/:categoryPropertyName" element={<ProductPage />} />
             <Route path="/orders" element={<OrdersPage />} />
+            <Route path="/customers" element={<CustomerPage />} />
             </Routes>
         </main>
       </div>

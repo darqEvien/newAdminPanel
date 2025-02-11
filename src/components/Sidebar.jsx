@@ -87,6 +87,15 @@ const Sidebar = () => {
   </Link>
             
           </li>
+          <li className="mb-4">
+          <Link 
+    to="/customers" 
+    className="text-lg font-medium hover:text-gray-400 flex items-center"
+  >
+    <span> Müşteriler</span>
+  </Link>
+            
+          </li>
         </ul>
       </nav>
     </div>

@@ -117,7 +117,7 @@ const OrdersPage = () => {
       if (!orderData) {
         throw new Error('Sipariş bulunamadı');
       }
-  
+
       // Önce ürünleri düzenle
       const simplifiedProducts = {};
       if (orderData.products) {
@@ -128,6 +128,12 @@ const OrdersPage = () => {
         });
       }
   
+      const products = {
+        '0': {
+          ...simplifiedProducts,
+          // status: 'pending'
+        }
+      };
       // Customers koleksiyonu için yeni veri yapısı
       const customerData = {
         fullName: orderData.fullName,
@@ -135,7 +141,7 @@ const OrdersPage = () => {
         email: orderData.email || null,
         message: orderData.message || null,
         dimensions: orderData.dimensions || null,
-        products: simplifiedProducts,
+        products: products,
         totalPrice: orderData.totalPrice,
         pdfUrl: orderData.pdfUrl || null,
         from: 'crafter-orders',
