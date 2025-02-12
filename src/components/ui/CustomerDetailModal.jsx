@@ -1,4 +1,10 @@
-import { Dialog, DialogContent } from './dialog';
+import { 
+  Dialog, 
+  DialogContent, 
+  DialogTitle, 
+  DialogDescription,
+  DialogHeader 
+} from './dialog';
 import PropTypes from 'prop-types';
 import { useState, useEffect } from 'react';
 import { ref, get,set } from 'firebase/database';
@@ -16,6 +22,7 @@ const CustomerDetailModal = ({ isOpen, onClose, customer }) => {
     const [notesLoading, setNotesLoading] = useState(false);
     const [expandedNoteDates, setExpandedNoteDates] = useState({});
 
+    
 // Add toggle function for note dates
 const toggleNoteDate = (date) => {
   setExpandedNoteDates(prev => ({
@@ -240,6 +247,7 @@ const toggleNoteDate = (date) => {
     return Object.keys(customer.products).length;
   };
 
+  
   const renderProducts = () => {
     if (!customer.products) return null;
 
@@ -260,21 +268,16 @@ const toggleNoteDate = (date) => {
   {/* Action Buttons */}
   <div className="flex gap-2">
     {/* Edit Button */}
-    <button className="text-gray-400 hover:text-blue-400">
-      <svg 
-        className="w-4 h-4" 
-        fill="none" 
-        stroke="currentColor" 
-        viewBox="0 0 24 24"
-      >
-        <path 
-          strokeLinecap="round" 
-          strokeLinejoin="round" 
-          strokeWidth="2" 
-          d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" 
-        />
-      </svg>
-    </button>
+    <button 
+  onClick={() => (true)} 
+  className="text-gray-400 hover:text-blue-400"
+>
+  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" 
+      d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" 
+    />
+  </svg>
+</button>
 
     {/* PDF Button */}
     {customer.pdfUrl && (
@@ -384,7 +387,15 @@ const toggleNoteDate = (date) => {
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-[90vw] w-[90vw] h-[85vh] max-h-[85vh] overflow-y-auto">
+    <DialogContent className="max-w-[90vw] w-[90vw] h-[85vh] max-h-[85vh] overflow-y-auto">
+      <DialogHeader>
+        <DialogTitle>
+          {customer.fullName} Müşteri Detayları
+        </DialogTitle>
+        <DialogDescription>
+          Müşteri bilgileri, siparişleri ve notlarını görüntüleyin
+        </DialogDescription>
+      </DialogHeader>
         <div className="flex h-full gap-6">
           <div className="flex-1 space-y-6">
           <div className="border-b border-gray-700 pb-4">
@@ -498,15 +509,19 @@ CustomerDetailModal.propTypes = {
       kontiWidth: PropTypes.number,
       kontiHeight: PropTypes.number
     }),
-    products: PropTypes.objectOf(
-      PropTypes.shape({
-        konti: PropTypes.shape({
-          propertyName: PropTypes.string,
-          products: PropTypes.array
-        }),
-        status: PropTypes.string
-      })
-    ),
+    products: PropTypes.oneOfType([
+      PropTypes.array,
+      PropTypes.objectOf(
+        PropTypes.shape({
+          konti: PropTypes.arrayOf(
+            PropTypes.shape({
+              productCollectionId: PropTypes.string,
+            })
+          ),
+        })
+      )
+    ]),
+
     totalPrice: PropTypes.number,
     pdfUrl: PropTypes.string,
     notes: PropTypes.arrayOf(
