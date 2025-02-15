@@ -1,1212 +1,197 @@
-import { Dialog, DialogContent } from "./dialogForCustomers";
-import PropTypes from "prop-types";
 import { useState, useEffect } from "react";
+import { Dialog, DialogContent } from "./dialogForCustomers";
 import { ref, get, set } from "firebase/database";
 import { database } from "../../firebase/firebaseConfig";
-
-const OrderSummary = ({ orderData, savedItems, onSave, onCancel }) => {
-  const calculateOrderTotal = () => {
-    let total = 0;
-    Object.values(orderData).forEach((products) => {
-      Object.values(products).forEach((product) => {
-        if (typeof product.price === "number") {
-          total += product.price;
-        }
-      });
-    });
-    return total;
-  };
-
-  const calculateBonusTotal = () => {
-    return savedItems.reduce((total, item) => {
-      return total + (Number(item.price) || 0);
-    }, 0);
-  };
-
-  const orderTotal = calculateOrderTotal();
-  const bonusTotal = calculateBonusTotal();
-  const grandTotal = orderTotal + bonusTotal;
-
-  return (
-    <div className="bg-gray-800/95 border-t border-gray-700 p-3">
-      <div className="flex justify-between items-center">
-        <div className="flex gap-3 flex-1">
-          <div className="flex items-center justify-between px-3 py-1.5 bg-gray-700/30 rounded flex-1">
-            <span className="text-gray-400 text-xs">Fiyat:</span>
-            <span className="text-green-400 text-xs font-medium">
-              {orderTotal.toLocaleString("tr-TR")}₺
-            </span>
-          </div>
-          <div className="flex items-center justify-between px-3 py-1.5 bg-gray-700/30 rounded flex-1">
-            <span className="text-gray-400 text-xs">Bonus:</span>
-            <span className="text-blue-400 text-xs font-medium">
-              {bonusTotal.toLocaleString("tr-TR")}₺
-            </span>
-          </div>
-          <div className="flex items-center justify-between px-3 py-1.5 bg-gray-700/30 rounded flex-1">
-            <span className="text-gray-400 text-xs">Toplam:</span>
-            <span className="text-green-400 text-xs font-medium">
-              {grandTotal.toLocaleString("tr-TR")}₺
-            </span>
-          </div>
-        </div>
-
-        <div className="flex gap-2 ml-4">
-          <button
-            onClick={onCancel}
-            className="p-2 text-gray-400 hover:text-gray-300 hover:bg-gray-700/30 rounded"
-          >
-            <svg
-              className="w-5 h-5"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth="2"
-                d="M6 18L18 6M6 6l12 12"
-              />
-            </svg>
-          </button>
-          <button
-            onClick={onSave}
-            className="p-2 text-green-400 hover:text-green-300 hover:bg-green-400/10 rounded"
-          >
-            <svg
-              className="w-5 h-5"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth="2"
-                d="M8 4H6a2 2 0 00-2 2v12a2 2 0 002 2h12a2 2 0 002-2V7.414A2 2 0 0019.414 6L14 2H6a2 2 0 00-2 2v12a2 2 0 002 2h12a2 2 0 002-2V8"
-              />
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth="2"
-                d="M12 15a3 3 0 100-6 3 3 0 000 6z"
-              />
-            </svg>
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-// Then use it inside OrderEditModa
+import OrderDetails from "./OrderDetails";
+import BonusItems from "./BonusItems";
+// import OrderNotes from "./OrderNotes";
+import OrderSummary from "./OrderSummary";
+import CustomerInfo from "./CustomerInfo";
+import PropTypes from "prop-types";
 const OrderEditModal = ({ isOpen, onClose, customer, orderKey, orderData }) => {
+  // Ana state'ler
   const [categories, setCategories] = useState({});
   const [products, setProducts] = useState({});
   const [localOrderData, setLocalOrderData] = useState(orderData);
 
-  // Düzenlenecek ürün bilgilerini tutacak state
+  // Sol taraf için state'ler (OrderDetails)
   const [editingItem, setEditingItem] = useState(null);
   const [editingValues, setEditingValues] = useState({ name: "", price: "" });
-  const [editingStates, setEditingStates] = useState({
-    currentItem: null,
-    values: {},
-    selectedProducts: {},
-  });
+  const [selectedProduct, setSelectedProduct] = useState(null);
 
-  // Bonus ürünler
+  // Sağ taraf için state'ler (BonusItems)
   const [savedItems, setSavedItems] = useState([]);
   const [editingSavedItem, setEditingSavedItem] = useState(null);
   const [editingSavedValues, setEditingSavedValues] = useState({
     category: "",
     product: "",
     price: "",
+    priceOnly: false
   });
-
-  // Yeni ürün ekleme
   const [newItems, setNewItems] = useState([{ category: "", product: "", price: "" }]);
-  const [selectedCategory, setSelectedCategory] = useState("");
-  const [selectedProduct, setSelectedProduct] = useState("");
-  const [customCategory, setCustomCategory] = useState("");
-  const [customProduct, setCustomProduct] = useState("");
-  const [customPrice, setCustomPrice] = useState("");
 
-  // Notlar
-  const [isAddingNote, setIsAddingNote] = useState(false);
-  const [newNote, setNewNote] = useState("");
-  const [notesLoading, setNotesLoading] = useState(false);
+  // Notlar için state'ler
+//   const [isAddingNote, setIsAddingNote] = useState(false);
+//   const [newNote, setNewNote] = useState("");
+//   const [notesLoading, setNotesLoading] = useState(false);
 
-  
-  // Firebase'e kaydetme fonksiyonunu ekle
+  // Initial data fetch
+  useEffect(() => {
+    const fetchInitialData = async () => {
+      try {
+        const [categoriesSnapshot, productsSnapshot] = await Promise.all([
+          get(ref(database, "categories")),
+          get(ref(database, "products"))
+        ]);
+
+        if (categoriesSnapshot.exists()) {
+          setCategories(categoriesSnapshot.val());
+        }
+        if (productsSnapshot.exists()) {
+          setProducts(productsSnapshot.val());
+        }
+      } catch (error) {
+        console.error("Error fetching initial data:", error);
+      }
+    };
+
+    fetchInitialData();
+  }, []);
+
+  // orderData değişikliklerini izle
+  useEffect(() => {
+    setLocalOrderData(orderData);
+  }, [orderData]);
+
+  // Ana kaydetme fonksiyonu
   const handleSaveChanges = async () => {
     try {
-      // Save all changes to Firebase
-      const productsRef = ref(database, `customers/${orderKey}/products/0`);
-      await set(productsRef, localOrderData);
-
-      // Save bonus items
-      const bonusRef = ref(database, `customers/${orderKey}/bonus`);
-      await set(bonusRef, savedItems);
-
-      onClose(); // Modal'ı kapat
+      await Promise.all([
+        set(ref(database, `customers/${orderKey}/products/0`), localOrderData),
+        set(ref(database, `customers/${orderKey}/bonus`), savedItems)
+      ]);
+      onClose();
     } catch (error) {
       console.error("Error saving changes:", error);
     }
   };
-  // Add this new useEffect to fetch products
-  useEffect(() => {
-    const fetchProducts = async () => {
-      try {
-        const productsRef = ref(database, "products");
-        const snapshot = await get(productsRef);
-        if (snapshot.exists()) {
-          setProducts(snapshot.val());
-        }
-      } catch (error) {
-        console.error("Error fetching products:", error);
-      }
-    };
-
-    fetchProducts();
-  }, []);
-// 1. orderData değişikliklerini izlemek için useEffect ekleyin
-useEffect(() => {
-  setLocalOrderData(orderData);
-}, [orderData]);
-
-// 2. Form resetleme fonksiyonu
-const resetFormFields = () => {
-  setSelectedCategory("");
-  setSelectedProduct("");
-  setCustomCategory("");
-  setCustomProduct("");
-  setCustomPrice("");
-  setEditingValues({
-    category: "",
-    name: "",
-    price: "",
-  });
-};
-  // Add this new function to handle category selection
-  const handleCategorySelect = (category) => {
-    setSelectedCategory(category);
-    setSelectedProduct("");
-    setCustomCategory("");
-    setCustomProduct("");
-    setCustomPrice("");
-  };
-
-  // Add this new function to handle product selection
-  const handleProductSelect = (value) => {
-    try {
-      if (value === "") {
-        setSelectedProduct("");
-        setCustomPrice("");
-        setEditingValues({
-          ...editingValues,
-          name: "",
-          price: ""
-        });
-        return;
-      }
-  
-      let product;
-      if (typeof value === "object") {
-        product = value;
-      } else {
-        product = JSON.parse(value);
-      }
-  
-      setSelectedProduct(product);
-  
-      if (!product.custom && product.price) {
-        const price = typeof product.price === "string" 
-          ? parseFloat(product.price) 
-          : product.price;
-        
-        setCustomPrice(price.toString());
-        setEditingValues({
-          ...editingValues,
-          name: product.title || product.name,
-          price: price.toString()
-        });
-      } else {
-        setCustomPrice("");
-        setEditingValues({
-          ...editingValues,
-          name: "",
-          price: ""
-        });
-      }
-    } catch (error) {
-      console.error("Error handling product selection:", error);
-      resetFormFields();
-    }
-  };
-
-  useEffect(() => {
-    const fetchCategories = async () => {
-      try {
-        const categoriesRef = ref(database, "categories");
-        const snapshot = await get(categoriesRef);
-        if (snapshot.exists()) {
-          setCategories(snapshot.val());
-        }
-      } catch (error) {
-        console.error("Error fetching categories:", error);
-      }
-    };
-
-    fetchCategories();
-  }, []);
-
-  const handleOrderItemEdit = async (categoryName, productIndex, product) => {
-    try {
-      setEditingItem(`${categoryName}-${productIndex}`);
-      
-      // Mevcut düzenleme durumunu kaydet
-      setEditingStates(prev => ({
-        ...prev,
-        currentItem: `${categoryName}-${productIndex}`,
-        values: {
-          ...prev.values,
-          [`${categoryName}-${productIndex}`]: {
-            name: product.name || product.title,
-            price: product.price?.toString() || "0",
-          }
-        }
-      }));
-  
-      // Kategori ürünlerini yükle
-      const productsRef = ref(database, `products/${categoryName}`);
-      const snapshot = await get(productsRef);
-      
-      if (snapshot.exists()) {
-        const categoryProducts = snapshot.val();
-        
-        // Ürünleri state'e kaydet
-        setProducts(prevProducts => ({
-          ...prevProducts,
-          [categoryName]: categoryProducts
-        }));
-  
-        // Mevcut ürünü bul ve seç
-        const existingProduct = Object.values(categoryProducts).find(
-          p => (p.name || p.title) === (product.name || product.title)
-        );
-  
-        setEditingStates(prev => ({
-          ...prev,
-          selectedProducts: {
-            ...prev.selectedProducts,
-            [`${categoryName}-${productIndex}`]: existingProduct || { custom: true }
-          }
-        }));
-      }
-    } catch (error) {
-      console.error("Error in handleOrderItemEdit:", error);
-    }
-  };
-  const getSelectedProduct = (categoryName, productIndex) => {
-    return editingStates.selectedProducts[`${categoryName}-${productIndex}`] || null;
-  };
-
-  const renderProductOptions = (categoryName) => {
-    const categoryProducts = products[categoryName] || {};
-    
-    const sortedProducts = Object.entries(categoryProducts)
-      .sort((a, b) => {
-        // Önce order değerine göre sırala
-        const orderA = typeof a[1].order === "number" ? a[1].order : 999;
-      const orderB = typeof b[1].order === "number" ? b[1].order : 999;
-        
-        if (orderA !== orderB) {
-          return orderA - orderB;
-        }
-        
-        // Order değerleri eşitse isme göre sırala
-        const nameA = a[1].title || a[1].name || "";
-        const nameB = b[1].title || b[1].name || "";
-        return nameA.localeCompare(nameB);
-      });
-  
-    return (
-      <>
-        <option value="">Ürün Seçin</option>
-        <option value='{"custom":true}'>Diğer</option>
-        {sortedProducts.map(([key, product]) => (
-          <option 
-            key={key} 
-            value={JSON.stringify({
-              ...product,
-              id: key // ID'yi de ekleyelim
-            })}
-          >
-            {product.title || product.name} - {Number(product.price)?.toLocaleString("tr-TR")}₺
-          </option>
-        ))}
-      </>
-    );
-  };
-  // Update handleOrderItemSave function
-  const handleOrderItemSave = async (categoryName, productIndex) => {
-    try {
-      const updatedOrderData = { ...localOrderData };
-      if (!updatedOrderData[categoryName]) {
-        updatedOrderData[categoryName] = {};
-      }
-  
-      const price = parseFloat(editingValues.price) || 0;
-  
-      updatedOrderData[categoryName][productIndex] = {
-        name: selectedProduct?.custom
-          ? editingValues.name
-          : selectedProduct?.title || selectedProduct?.name,
-        price: price
-      };
-  
-      setLocalOrderData(updatedOrderData);
-      setEditingItem(null);
-      setSelectedProduct(null);
-      resetFormFields();
-    } catch (error) {
-      console.error("Error updating item:", error);
-    }
-  };
-
-  // Update handleDeleteOrderItem function
-  const handleDeleteOrderItem = async (categoryName, productIndex) => {
-    try {
-      // Delete specific product
-      const productRef = ref(
-        database,
-        `customers/${orderKey}/products/0/${categoryName}/${productIndex}`
-      );
-      await set(productRef, null);
-
-      // Check if category is empty and delete if necessary
-      const categoryRef = ref(
-        database,
-        `customers/${orderKey}/products/0/${categoryName}`
-      );
-      const categorySnapshot = await get(categoryRef);
-
-      if (
-        !categorySnapshot.exists() ||
-        Object.keys(categorySnapshot.val()).length === 0
-      ) {
-        await set(categoryRef, null);
-      }
-    } catch (error) {
-      console.error("Error deleting item:", error);
-    }
-  };
-
-
-  const sortProductsByOrder = (products) => {
-    return Object.entries(products).sort((a, b) => {
-      // Get order values, default to 999 if not present
-      const orderA = typeof a[1].order === "number" ? a[1].order : 999;
-      const orderB = typeof b[1].order === "number" ? b[1].order : 999;
-
-      // Sort by order first
-      if (orderA !== orderB) {
-        return orderA - orderB;
-      }
-
-      // If orders are the same, sort by name/title
-      const nameA = a[1].title || a[1].name || "";
-      const nameB = b[1].title || b[1].name || "";
-      return nameA.localeCompare(nameB);
-    });
-  };
-
-  const renderNewItemForms = () => (
-    <div className="space-y-1">
-      {newItems.map((item, index) => (
-        <div key={index} className="bg-gray-700/30 p-1.5 rounded">
-          {!item.isEditing ? (
-            <div
-              className="grid grid-cols-[2fr,2fr,1fr,auto] gap-2 w-full cursor-pointer items-center"
-              onClick={() => {
-                const updated = [...newItems];
-                updated[index] = { ...item, isEditing: true };
-                setNewItems(updated);
-              }}
-            >
-              <span className="text-gray-400 text-xs truncate hover:text-gray-300">
-                {item.category || "Kategori"}
-              </span>
-              <span className="text-gray-300 text-xs truncate hover:text-gray-200">
-                {item.product || "Ürün"}
-              </span>
-              <div className="flex items-center justify-end gap-1">
-                <span className="text-green-400 text-xs">
-                  {Number(item.price).toLocaleString("tr-TR") || "0"}₺
-                </span>
-              </div>
-              <div className="flex gap-1 justify-end">
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    const updated = newItems.filter((_, idx) => idx !== index);
-                    setNewItems(updated);
-                  }}
-                  className="text-red-400 hover:text-red-300 p-1"
-                >
-                  <svg
-                    className="w-3 h-3"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth="2"
-                      d="M6 18L18 6M6 6l12 12"
-                    />
-                  </svg>
-                </button>
-              </div>
-            </div>
-          ) : (
-            <div className="grid grid-cols-[2fr,2fr,1fr,auto] gap-2 w-full items-center">
-              <div className="relative">
-                <select
-                  value={selectedCategory}
-                  onChange={(e) => handleCategorySelect(e.target.value)}
-                  className="bg-gray-600 text-xs text-gray-200 px-2 py-1.5 rounded outline-none w-full focus:bg-gray-500/50"
-                >
-                  <option value="">Kategori Seçin</option>
-                  <option value="custom">Diğer</option>
-                  {Object.values(categories)
-                    .sort((a, b) => (a.order || 999) - (b.order || 999)) // Sort by order property
-                    .map((category) => (
-                      <option
-                        key={category.propertyName}
-                        value={category.propertyName}
-                      >
-                        {category.title}
-                      </option>
-                    ))}
-                </select>
-                {selectedCategory === "custom" && (
-                  <input
-                    type="text"
-                    value={customCategory}
-                    onChange={(e) => setCustomCategory(e.target.value)}
-                    placeholder="Kategori Girin"
-                    className="mt-1 bg-gray-600 text-xs text-gray-200 px-2 py-1.5 rounded outline-none w-full focus:bg-gray-500/50"
-                  />
-                )}
-              </div>
-
-              <div className="relative">
-                <select
-                  value={selectedProduct ? JSON.stringify(selectedProduct) : ""}
-                  onChange={(e) => handleProductSelect(e.target.value)}
-                  disabled={!selectedCategory || selectedCategory === "custom"}
-                  className="bg-gray-600 text-xs text-gray-200 px-2 py-1.5 rounded outline-none w-full focus:bg-gray-500/50"
-                >
-                  <option value="">Ürün Seçin</option>
-                  <option value='{"custom":true}'>Diğer</option>
-                  {selectedCategory &&
-                    products[selectedCategory] &&
-                    sortProductsByOrder(products[selectedCategory]).map(
-                      ([key, product]) => (
-                        <option key={key} value={JSON.stringify(product)}>
-                          {product.title || product.name}
-                        </option>
-                      )
-                    )}
-                </select>
-
-                {(selectedCategory === "custom" ||
-                  (selectedProduct && selectedProduct.custom)) && (
-                  <input
-                    type="text"
-                    value={customProduct}
-                    onChange={(e) => setCustomProduct(e.target.value)}
-                    placeholder="Ürün Girin"
-                    className="mt-1 bg-gray-600 text-xs text-gray-200 px-2 py-1.5 rounded outline-none w-full focus:bg-gray-500/50"
-                  />
-                )}
-              </div>
-
-              <input
-                type="number"
-                value={customPrice}
-                onChange={(e) => setCustomPrice(e.target.value)}
-                placeholder="Fiyat"
-                className="bg-gray-600 text-xs text-gray-200 px-2 py-1.5 rounded outline-none w-full focus:bg-gray-500/50"
-              />
-
-              <div className="flex gap-1 justify-end">
-                <button
-                  onClick={() => {
-                    try {
-                      // Get category title from categories object
-                      let categoryTitle;
-
-                      if (selectedCategory === "custom") {
-                        categoryTitle = customCategory;
-                      } else {
-                        const selectedCategoryObj = Object.values(
-                          categories
-                        ).find((cat) => cat.propertyName === selectedCategory);
-                        categoryTitle = selectedCategoryObj?.title;
-                      }
-
-                      // Kategori başlığı kontrolü
-                      if (!categoryTitle) {
-                        console.error("Kategori başlığı bulunamadı");
-                        return;
-                      }
-
-                      const newItem = {
-                        category: categoryTitle, // Directly use categoryTitle
-                        product:
-                          selectedCategory === "custom" ||
-                          (selectedProduct && selectedProduct.custom)
-                            ? customProduct
-                            : selectedProduct.title || selectedProduct.name,
-                        price: customPrice,
-                        isEditing: false,
-                      };
-
-                      // Update only the current item in newItems
-                      const updated = [...newItems];
-                      updated[index] = { category: "", product: "", price: "" }; // Reset the current item
-                      setNewItems(updated);
-
-                      // Add to savedItems only
-                      setSavedItems([
-                        ...savedItems,
-                        {
-                          category: categoryTitle,
-                          product: newItem.product,
-                          price: customPrice,
-                        },
-                      ]);
-
-                      // Reset selections
-                      setSelectedCategory("");
-                      setSelectedProduct("");
-                      setCustomCategory("");
-                      setCustomProduct("");
-                      setCustomPrice("");
-                    } catch (error) {
-                      console.error("Error saving item:", error);
-                    }
-                  }}
-                  className="text-green-400 hover:text-green-300 p-1"
-                >
-                  <svg
-                    className="w-3.5 h-3.5"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth="2"
-                      d="M5 13l4 4L19 7"
-                    />
-                  </svg>
-                </button>
-                <button
-                  onClick={() => {
-                    const updated = newItems.filter((_, idx) => idx !== index);
-                    setNewItems(updated);
-                  }}
-                  className="text-red-400 hover:text-red-300 p-1"
-                >
-                  <svg
-                    className="w-3.5 h-3.5"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth="2"
-                      d="M6 18L18 6M6 6l12 12"
-                    />
-                  </svg>
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-      ))}
-    </div>
-  );
-
-  // Add this new handler
-  const handleSavedItemEdit = (index, item) => {
-    setEditingSavedItem(index);
-    setEditingSavedValues({
-      category: item.category,
-      product: item.product,
-      price:  item.price
-    });
-  };
-
-  // Add this new handler
-  const handleSavedItemSave = (index) => {
-    const updatedItems = [...savedItems];
-    const price = parseFloat(editingSavedValues.price) || 0;
-    
-    updatedItems[index] = {
-      ...editingSavedValues,
-      price: price
-    };
-    
-    setSavedItems(updatedItems);
-    setEditingSavedItem(null);
-    setEditingSavedValues({
-      category: "",
-      product: "",
-      price: ""
-    });
-  };
-
-  // Update the renderSavedItems function
-  const renderSavedItems = () => (
-    <div className="space-y-1">
-      {savedItems.map((item, index) => (
-        <div
-          key={index}
-          className="grid grid-cols-[1.2fr,1.2fr,1.2fr,auto] gap-2 bg-gray-700/30 p-1.5"
-        >
-          {editingSavedItem === index ? (
-            <>
-              <input
-                type="text"
-                value={editingSavedValues.category}
-                onChange={(e) =>
-                  setEditingSavedValues({
-                    ...editingSavedValues,
-                    category: e.target.value,
-                  })
-                }
-                className="bg-gray-600 text-xs text-gray-200 px-2 py-1.5 rounded outline-none w-full focus:bg-gray-500/50"
-              />
-              <input
-                type="text"
-                value={editingSavedValues.product}
-                onChange={(e) =>
-                  setEditingSavedValues({
-                    ...editingSavedValues,
-                    product: e.target.value,
-                  })
-                }
-                className="bg-gray-600 text-xs text-gray-200 px-2 py-1.5 rounded outline-none w-full focus:bg-gray-500/50"
-              />
-              <div className="flex items-center gap-1">
-                <input
-                  type="number"
-                  value={editingSavedValues.price}
-                  onChange={(e) =>
-                    setEditingSavedValues({
-                      ...editingSavedValues,
-                      price: e.target.value,
-                    })
-                  }
-                  className="bg-gray-600 text-xs text-gray-200 px-2 py-1.5 rounded outline-none w-full min-w-[80px] focus:bg-gray-500/50"
-                />
-                <div className="flex gap-1">
-                  <button
-                    onClick={() => handleSavedItemSave(index)}
-                    className="text-green-400 hover:text-green-300 p-1"
-                  >
-                    <svg
-                      className="w-3.5 h-3.5"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth="2"
-                        d="M5 13l4 4L19 7"
-                      />
-                    </svg>
-                  </button>
-                  <button
-                    onClick={() => {
-                      const updated = savedItems.filter(
-                        (_, idx) => idx !== index
-                      );
-                      setSavedItems(updated);
-                      setEditingSavedItem(null);
-                    }}
-                    className="text-red-400 hover:text-red-300 p-1"
-                  >
-                    <svg
-                      className="w-3.5 h-3.5"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth="2"
-                        d="M6 18L18 6M6 6l12 12"
-                      />
-                    </svg>
-                  </button>
-                </div>
-              </div>
-            </>
-          ) : (
-            <>
-              <span
-                className="text-gray-400 text-xs truncate cursor-pointer hover:text-gray-300"
-                onClick={() => handleSavedItemEdit(index, item)}
-              >
-                {item.category}
-              </span>
-              <span
-                className="text-gray-300 text-xs truncate cursor-pointer hover:text-gray-200"
-                onClick={() => handleSavedItemEdit(index, item)}
-              >
-                {item.product}
-              </span>
-              <div className="flex items-center justify-end gap-1">
-                <span className="text-green-400 text-xs">{Number(item.price).toLocaleString("tr-TR")}₺</span>
-                <div className="flex gap-1">
-                  <button
-                    onClick={() => handleSavedItemEdit(index, item)}
-                    className="text-gray-400 hover:text-blue-400"
-                  >
-                    <svg
-                      className="w-3 h-3"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth="2"
-                        d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"
-                      />
-                    </svg>
-                  </button>
-                  <button
-                    onClick={() => {
-                      const updated = savedItems.filter(
-                        (_, idx) => idx !== index
-                      );
-                      setSavedItems(updated);
-                    }}
-                    className="text-red-400 hover:text-red-300"
-                  >
-                    <svg
-                      className="w-3 h-3"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth="2"
-                        d="M6 18L18 6M6 6l12 12"
-                      />
-                    </svg>
-                  </button>
-                </div>
-              </div>
-            </>
-          )}
-        </div>
-      ))}
-    </div>
-  );
-
-  useEffect(() => {
-    const fetchCategories = async () => {
-      try {
-        const categoriesRef = ref(database, "categories");
-        const snapshot = await get(categoriesRef);
-        if (snapshot.exists()) {
-          setCategories(snapshot.val());
-        }
-      } catch (error) {
-        console.error("Error fetching categories:", error);
-      }
-    };
-
-    fetchCategories();
-  }, []);
-
-  const sortByCategories = (a, b) => {
-    const categoryA = Object.values(categories).find(
-      (cat) => cat.propertyName?.toLowerCase() === a[0].toLowerCase()
-    );
-    const categoryB = Object.values(categories).find(
-      (cat) => cat.propertyName?.toLowerCase() === b[0].toLowerCase()
-    );
-
-    const orderA = categoryA?.order ?? 999;
-    const orderB = categoryB?.order ?? 999;
-
-    return orderA - orderB;
-  };
-
-  
-
-  const renderOrderDetails = () => {
-    return (
-      <div className="grid grid-cols-2 gap-4">
-        {/* Sol Taraf - Mevcut Ürünler */}
-        <div>
-        <div className="grid grid-cols-1 divide-y divide-gray-700/50">
-          {Object.entries(localOrderData)
-            .filter(
-              ([categoryName]) =>
-                categoryName !== "status" &&
-                categoryName !== "verandaWidth" &&
-                categoryName !== "verandaHeight"
-            )
-            .sort(sortByCategories)
-            .map(([categoryName, products], index) => {
-              const category = Object.values(categories).find(
-                (cat) =>
-                  cat.propertyName?.toLowerCase() === categoryName.toLowerCase()
-              );
-
-              return (
-                <div key={index}>
-                  {Object.entries(products).map(([productIndex, product]) => (
-                    <div
-                      key={productIndex}
-                      className="grid grid-cols-[2fr,2fr,1fr,auto] items-center bg-gray-700/30 px-2 py-1"
-                    >
-                      {editingItem === `${categoryName}-${productIndex}` ? (
-                        <>
-                          <span className="text-gray-400 text-xs truncate">
-                            {category?.title || categoryName}
-                          </span>
-                          <div className="relative">
-    <select
-  value={getSelectedProduct(categoryName, productIndex) ? 
-    JSON.stringify(getSelectedProduct(categoryName, productIndex)) : 
-    ""
-  }
-  onChange={(e) => handleProductSelect(e.target.value, categoryName, productIndex)}
-  className="bg-gray-600 text-xs text-gray-200 px-2 py-1.5 rounded outline-none w-full focus:bg-gray-500/50"
->
-  {renderProductOptions(categoryName)}
-</select>
-
-                            {selectedProduct?.custom && (
-                              <input
-                                type="text"
-                                value={editingValues.name}
-                                onChange={(e) =>
-                                  setEditingValues({
-                                    ...editingValues,
-                                    name: e.target.value,
-                                  })
-                                }
-                                placeholder="Ürün Adı"
-                                className="mt-1 bg-gray-600 text-xs text-gray-200 px-2 py-1.5 rounded outline-none w-full focus:bg-gray-500/50"
-                              />
-                            )}
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <input
-                              type="number"
-                              value={editingValues.price}
-                              onChange={(e) =>
-                                setEditingValues({
-                                  ...editingValues,
-                                  price: e.target.value,
-                                })
-                              }
-                              className="bg-gray-600 text-xs text-gray-200 px-2 py-1.5 rounded outline-none w-24 focus:bg-gray-500/50"
-                            />
-                            <span className="text-gray-400 text-xs">₺</span>
-                          </div>
-                          <div className="flex gap-1">
-                            <button
-                              onClick={() => handleOrderItemSave(categoryName, productIndex)}
-                              className="text-green-400 hover:text-green-300 p-1"
-                            >
-                              <svg
-                                className="w-3.5 h-3.5"
-                                fill="none"
-                                stroke="currentColor"
-                                viewBox="0 0 24 24"
-                              >
-                                <path
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  strokeWidth="2"
-                                  d="M5 13l4 4L19 7"
-                                />
-                              </svg>
-                            </button>
-                            <button
-                              onClick={() => setEditingItem(null)}
-                              className="text-red-400 hover:text-red-300 p-1"
-                            >
-                              <svg
-                                className="w-3.5 h-3.5"
-                                fill="none"
-                                stroke="currentColor"
-                                viewBox="0 0 24 24"
-                              >
-                                <path
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  strokeWidth="2"
-                                  d="M6 18L18 6M6 6l12 12"
-                                />
-                              </svg>
-                            </button>
-                          </div>
-                        </>
-                      ) : (
-                        <>
-                          <span className="text-gray-400 text-xs truncate">
-                            {category?.title || categoryName}
-                          </span>
-                          <span 
-                            className="text-gray-300 text-xs truncate cursor-pointer hover:text-gray-200"
-                            onClick={() => handleOrderItemEdit(categoryName, productIndex, product)}
-                          >
-                            {product.name || product.title}
-                          </span>
-                          <div 
-                            className="flex items-center justify-end gap-1 cursor-pointer hover:opacity-80"
-                            onClick={() => handleOrderItemEdit(categoryName, productIndex, product)}
-                          >
-                            <span className="text-green-400 text-xs">
-                              {Number(product.price)?.toLocaleString("tr-TR")}₺
-                            </span>
-                          </div>
-                          <div className="flex gap-1">
-                            <button
-                              onClick={() => handleOrderItemEdit(categoryName, productIndex, product)}
-                              className="text-gray-400 hover:text-blue-400 p-1"
-                            >
-                              <svg
-                                className="w-3 h-3"
-                                fill="none"
-                                stroke="currentColor"
-                                viewBox="0 0 24 24"
-                              >
-                                <path
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  strokeWidth="2"
-                                  d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"
-                                />
-                              </svg>
-                            </button>
-                            <button
-                              onClick={() => handleDeleteOrderItem(categoryName, productIndex)}
-                              className="text-red-400 hover:text-red-300 p-1"
-                            >
-                              <svg
-                                className="w-3 h-3"
-                                fill="none"
-                                stroke="currentColor"
-                                viewBox="0 0 24 24"
-                              >
-                                <path
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  strokeWidth="2"
-                                  d="M6 18L18 6M6 6l12 12"
-                                />
-                              </svg>
-                            </button>
-                          </div>
-                        </>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              );
-            })}
-        </div>
-      </div>
-
-        {/* Sağ Taraf - Yeni Ürün */}
-
-        <div className="border-l border-gray-700 pl-4 overflow-y-auto">
-          <div className="space-y-1">
-            {renderSavedItems()}
-            {renderNewItemForms()}
-
-            {/* Add button */}
+return (
+    <Dialog open={isOpen} onOpenChange={onClose}>
+      <DialogContent className="max-w-[90vw] w-[90vw] h-[85vh] max-h-[85vh] p-0 flex flex-col bg-gray-900">
+        {/* Header */}
+        <div className="border-b border-gray-800 p-4">
+          <div className="flex items-center justify-between">
+            <h1 className="text-xl font-semibold text-gray-100">
+              Sipariş Düzenle - {customer.fullName}
+            </h1>
             <button
-              className="w-full h-8 flex items-center justify-center text-gray-500 hover:text-gray-400 mt-2"
-              onClick={() => {
-                setNewItems([
-                  ...newItems,
-                  { category: "", product: "", price: "" },
-                ]);
-                setTimeout(() => {
-                  const inputs = document.querySelectorAll(".new-item-input");
-                  inputs[inputs.length - 3]?.focus();
-                }, 0);
-              }}
+              onClick={onClose}
+              className="text-gray-400 hover:text-gray-300 transition-colors"
             >
-              <svg
-                className="w-5 h-5"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth="2"
-                  d="M12 4v16m8-8H4"
-                />
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
           </div>
         </div>
-      </div>
-    );
-  };
-
-  return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-[90vw] w-[90vw] h-[85vh] max-h-[85vh] p-0 flex flex-col">
+  
+        {/* Main Content */}
         <div className="flex-1 overflow-hidden">
-          <div className="flex h-full gap-6">
-            <div className="flex-1 space-y-6 overflow-y-auto pr-4">
-              <div className="bg-gray-800/50 rounded-lg p-4">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <h1 className="text-2xl font-bold text-gray-100">
-                      {customer.fullName}
-                    </h1>
-                    <div className="space-y-1 mt-2">
-                      <p className="text-gray-400">{customer.email}</p>
-                      <p className="text-gray-400">{customer.phone}</p>
-                    </div>
+          <div className="flex h-full">
+            {/* Left Panel */}
+            <div className="flex-1 flex flex-col h-full border-r border-gray-800">
+              <div className="p-4 space-y-4 overflow-y-auto">
+                {/* Customer Info Card */}
+                <div className="bg-gray-800/40 rounded-lg p-4 backdrop-blur-sm">
+                  <CustomerInfo customer={customer} />
+                </div>
+                
+                {/* Order Details Card */}
+                <div className="bg-gray-800/40 rounded-lg p-4 backdrop-blur-sm">
+                  <div className="flex items-center justify-between mb-4">
+                    <h2 className="text-lg font-medium text-gray-200">
+                      Sipariş Detayları
+                    </h2>
+                    <span className="text-sm text-gray-400">
+                      {Object.keys(localOrderData).length} Ürün
+                    </span>
                   </div>
+                  <OrderDetails 
+                    categories={categories}
+                    products={products}
+                    localOrderData={localOrderData}
+                    editingItem={editingItem}
+                    selectedProduct={selectedProduct}
+                    editingValues={editingValues}
+                    setEditingItem={setEditingItem}
+                    setSelectedProduct={setSelectedProduct}
+                    setEditingValues={setEditingValues}
+                    setLocalOrderData={setLocalOrderData}
+                    orderKey={orderKey}
+                  />
                 </div>
               </div>
-
-              <div className="bg-gray-800/30 rounded-lg p-4">
-                <h2 className="text-xl font-semibold text-gray-200 mb-4">
-                  Sipariş Detayları
-                </h2>
-                {renderOrderDetails()}
-              </div>
             </div>
-
-            <div className="w-64 border-l border-gray-700 pl-6 overflow-y-auto">
-              <div className="sticky top-0 bg-gray-900 pb-4 z-10">
-                <div className="flex items-center gap-2 mb-4 mt-4">
-                  <h2 className="text-xl font-semibold text-gray-200">
-                    Sipariş Notları
-                  </h2>
-                  <button
-                    onClick={() => setIsAddingNote(true)}
-                    className="text-blue-400 hover:text-blue-300 p-1 rounded-full hover:bg-blue-400/10"
-                  >
-                    <svg
-                      className="w-4 h-4"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth="2"
-                        d="M12 4v16m8-8H4"
-                      />
-                    </svg>
-                  </button>
-                </div>
-
-                {isAddingNote && (
-                  <div className="mt-4 space-y-2">
-                    <textarea
-                      value={newNote}
-                      onChange={(e) => setNewNote(e.target.value)}
-                      placeholder="Not ekleyin..."
-                      className="w-full h-24 bg-gray-800 border border-gray-700 rounded-lg p-2 text-gray-300 text-sm resize-none focus:outline-none focus:border-blue-500"
-                    />
-                    <div className="flex justify-end gap-2">
-                      <button
-                        onClick={() => setIsAddingNote(false)}
-                        className="px-3 py-1 text-sm text-gray-400 hover:text-gray-300"
-                      >
-                        İptal
-                      </button>
-                      <button
-                        onClick={() => {}}
-                        disabled={notesLoading}
-                        className="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
-                      >
-                        {notesLoading ? "Kaydediliyor..." : "Kaydet"}
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              <div className="space-y-4 mt-4">
-                <p className="text-gray-500">Not bulunmamaktadır.</p>
-              </div>
-            </div>
+  
+            {/* Right Panel */}
+            <div className="w-[500px] flex flex-col h-full bg-gray-800/30 border-l border-gray-700">
+  <div className="p-4 border-b border-gray-800">
+    <h2 className="text-lg font-medium text-gray-200">
+      Bonus Ürünler
+    </h2>
+  </div>
+  <div className="flex-1 overflow-y-auto p-4">
+    <BonusItems 
+      savedItems={savedItems}
+      newItems={newItems}
+      categories={categories}
+      products={products}
+      editingSavedItem={editingSavedItem}
+      editingSavedValues={editingSavedValues}
+      setSavedItems={setSavedItems}
+      setNewItems={setNewItems}
+      setEditingSavedItem={setEditingSavedItem}
+      setEditingSavedValues={setEditingSavedValues}
+    />
+  </div>
+</div>
           </div>
         </div>
-
-        <OrderSummary
-          orderData={orderData}
-          savedItems={savedItems || []}
-          onSave={handleSaveChanges}
-          onCancel={onClose}
-        />
+  
+        {/* Footer */}
+        <div className="border-t border-gray-800 bg-gray-900/95 backdrop-blur-sm p-4">
+          <OrderSummary
+            orderData={localOrderData}
+            savedItems={savedItems}
+            onSave={handleSaveChanges}
+            onCancel={onClose}
+          />
+        </div>
       </DialogContent>
     </Dialog>
   );
 };
-
-// Update PropTypes at the bottom of the file
-OrderSummary.propTypes = {
-  orderData: PropTypes.object.isRequired,
-  savedItems: PropTypes.arrayOf(
-    PropTypes.shape({
-      category: PropTypes.string,
-      product: PropTypes.string,
-      price: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
-    })
-  ).isRequired,
-  onSave: PropTypes.func.isRequired,
-  onCancel: PropTypes.func.isRequired,
-};
-
 OrderEditModal.propTypes = {
-  isOpen: PropTypes.bool.isRequired,
-  onClose: PropTypes.func.isRequired,
-  customer: PropTypes.object.isRequired,
-  orderKey: PropTypes.string.isRequired,
-  orderData: PropTypes.object.isRequired,
-};
-
-OrderEditModal.defaultProps = {
-  savedItems: [],
-};
+    isOpen: PropTypes.bool.isRequired,
+    onClose: PropTypes.func.isRequired,
+    customer: PropTypes.shape({
+      fullName: PropTypes.string.isRequired,
+      email: PropTypes.string,
+      phone: PropTypes.string
+    }).isRequired,
+    orderKey: PropTypes.string.isRequired,
+    orderData: PropTypes.shape({
+      status: PropTypes.string,
+      verandaWidth: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
+      verandaHeight: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
+      // Her kategori için dinamik nesne yapısı
+      [PropTypes.string]: PropTypes.objectOf(
+        PropTypes.shape({
+          name: PropTypes.string.isRequired,
+          price: PropTypes.number.isRequired,
+          productCollectionId: PropTypes.string
+        })
+      )
+    }).isRequired};
 
 export default OrderEditModal;
