@@ -102,34 +102,42 @@ const OrderSummary = ({ orderData, savedItems, onSave, onCancel }) => {
 
 // Then use it inside OrderEditModa
 const OrderEditModal = ({ isOpen, onClose, customer, orderKey, orderData }) => {
-  const [isAddingNote, setIsAddingNote] = useState(false);
-  const [newNote, setNewNote] = useState("");
-  const [notesLoading, setNotesLoading] = useState(false);
   const [categories, setCategories] = useState({});
+  const [products, setProducts] = useState({});
+  const [localOrderData, setLocalOrderData] = useState(orderData);
+
+  // Düzenlenecek ürün bilgilerini tutacak state
   const [editingItem, setEditingItem] = useState(null);
-  const [editingValues, setEditingValues] = useState({
-    category: "",
-    name: "",
-    price: "",
+  const [editingValues, setEditingValues] = useState({ name: "", price: "" });
+  const [editingStates, setEditingStates] = useState({
+    currentItem: null,
+    values: {},
+    selectedProducts: {},
   });
+
+  // Bonus ürünler
   const [savedItems, setSavedItems] = useState([]);
-  const [newItems, setNewItems] = useState([
-    { category: "", product: "", price: "" },
-  ]);
   const [editingSavedItem, setEditingSavedItem] = useState(null);
   const [editingSavedValues, setEditingSavedValues] = useState({
     category: "",
     product: "",
     price: "",
   });
-  const [products, setProducts] = useState({});
+
+  // Yeni ürün ekleme
+  const [newItems, setNewItems] = useState([{ category: "", product: "", price: "" }]);
   const [selectedCategory, setSelectedCategory] = useState("");
   const [selectedProduct, setSelectedProduct] = useState("");
   const [customCategory, setCustomCategory] = useState("");
   const [customProduct, setCustomProduct] = useState("");
   const [customPrice, setCustomPrice] = useState("");
-  const [localOrderData, setLocalOrderData] = useState(orderData);
 
+  // Notlar
+  const [isAddingNote, setIsAddingNote] = useState(false);
+  const [newNote, setNewNote] = useState("");
+  const [notesLoading, setNotesLoading] = useState(false);
+
+  
   // Firebase'e kaydetme fonksiyonunu ekle
   const handleSaveChanges = async () => {
     try {
@@ -162,7 +170,24 @@ const OrderEditModal = ({ isOpen, onClose, customer, orderKey, orderData }) => {
 
     fetchProducts();
   }, []);
+// 1. orderData değişikliklerini izlemek için useEffect ekleyin
+useEffect(() => {
+  setLocalOrderData(orderData);
+}, [orderData]);
 
+// 2. Form resetleme fonksiyonu
+const resetFormFields = () => {
+  setSelectedCategory("");
+  setSelectedProduct("");
+  setCustomCategory("");
+  setCustomProduct("");
+  setCustomPrice("");
+  setEditingValues({
+    category: "",
+    name: "",
+    price: "",
+  });
+};
   // Add this new function to handle category selection
   const handleCategorySelect = (category) => {
     setSelectedCategory(category);
@@ -174,24 +199,49 @@ const OrderEditModal = ({ isOpen, onClose, customer, orderKey, orderData }) => {
 
   // Add this new function to handle product selection
   const handleProductSelect = (value) => {
-    let product;
     try {
-      // Check if value is already an object
+      if (value === "") {
+        setSelectedProduct("");
+        setCustomPrice("");
+        setEditingValues({
+          ...editingValues,
+          name: "",
+          price: ""
+        });
+        return;
+      }
+  
+      let product;
       if (typeof value === "object") {
         product = value;
       } else {
-        // If it's a string, parse it
         product = JSON.parse(value);
+      }
+  
+      setSelectedProduct(product);
+  
+      if (!product.custom && product.price) {
+        const price = typeof product.price === "string" 
+          ? parseFloat(product.price) 
+          : product.price;
+        
+        setCustomPrice(price.toString());
+        setEditingValues({
+          ...editingValues,
+          name: product.title || product.name,
+          price: price.toString()
+        });
+      } else {
+        setCustomPrice("");
+        setEditingValues({
+          ...editingValues,
+          name: "",
+          price: ""
+        });
       }
     } catch (error) {
       console.error("Error handling product selection:", error);
-      return;
-    }
-
-    setSelectedProduct(product);
-    setCustomProduct("");
-    if (product.price) {
-      setCustomPrice(product.price.toString());
+      resetFormFields();
     }
   };
 
@@ -211,52 +261,115 @@ const OrderEditModal = ({ isOpen, onClose, customer, orderKey, orderData }) => {
     fetchCategories();
   }, []);
 
-  const handleOrderItemEdit = (categoryName, productIndex, product) => {
-    setEditingItem(`${categoryName}-${productIndex}`);
-    setSelectedCategory(categoryName);
+  const handleOrderItemEdit = async (categoryName, productIndex, product) => {
+    try {
+      setEditingItem(`${categoryName}-${productIndex}`);
+      
+      // Mevcut düzenleme durumunu kaydet
+      setEditingStates(prev => ({
+        ...prev,
+        currentItem: `${categoryName}-${productIndex}`,
+        values: {
+          ...prev.values,
+          [`${categoryName}-${productIndex}`]: {
+            name: product.name || product.title,
+            price: product.price?.toString() || "0",
+          }
+        }
+      }));
   
-    // Products verisini doğru şekilde kontrol edelim
-    const categoryProducts = products[categoryName] || {};
-    const existingProduct = Object.values(categoryProducts).find(
-      p => (p.name || p.title) === (product.name || product.title)
-    );
+      // Kategori ürünlerini yükle
+      const productsRef = ref(database, `products/${categoryName}`);
+      const snapshot = await get(productsRef);
+      
+      if (snapshot.exists()) {
+        const categoryProducts = snapshot.val();
+        
+        // Ürünleri state'e kaydet
+        setProducts(prevProducts => ({
+          ...prevProducts,
+          [categoryName]: categoryProducts
+        }));
   
-    if (existingProduct) {
-      setSelectedProduct(existingProduct);
-      setEditingValues({
-        category: categoryName,
-        name: existingProduct.name || existingProduct.title,
-        price: existingProduct.price?.toString() || "0",
-      });
-    } else {
-      setSelectedProduct({ custom: true });
-      setEditingValues({
-        category: categoryName,
-        name: product.name || product.title,
-        price: product.price?.toString() || "0",
-      });
+        // Mevcut ürünü bul ve seç
+        const existingProduct = Object.values(categoryProducts).find(
+          p => (p.name || p.title) === (product.name || product.title)
+        );
+  
+        setEditingStates(prev => ({
+          ...prev,
+          selectedProducts: {
+            ...prev.selectedProducts,
+            [`${categoryName}-${productIndex}`]: existingProduct || { custom: true }
+          }
+        }));
+      }
+    } catch (error) {
+      console.error("Error in handleOrderItemEdit:", error);
     }
   };
+  const getSelectedProduct = (categoryName, productIndex) => {
+    return editingStates.selectedProducts[`${categoryName}-${productIndex}`] || null;
+  };
 
+  const renderProductOptions = (categoryName) => {
+    const categoryProducts = products[categoryName] || {};
+    
+    const sortedProducts = Object.entries(categoryProducts)
+      .sort((a, b) => {
+        // Önce order değerine göre sırala
+        const orderA = typeof a[1].order === "number" ? a[1].order : 999;
+      const orderB = typeof b[1].order === "number" ? b[1].order : 999;
+        
+        if (orderA !== orderB) {
+          return orderA - orderB;
+        }
+        
+        // Order değerleri eşitse isme göre sırala
+        const nameA = a[1].title || a[1].name || "";
+        const nameB = b[1].title || b[1].name || "";
+        return nameA.localeCompare(nameB);
+      });
+  
+    return (
+      <>
+        <option value="">Ürün Seçin</option>
+        <option value='{"custom":true}'>Diğer</option>
+        {sortedProducts.map(([key, product]) => (
+          <option 
+            key={key} 
+            value={JSON.stringify({
+              ...product,
+              id: key // ID'yi de ekleyelim
+            })}
+          >
+            {product.title || product.name} - {Number(product.price)?.toLocaleString("tr-TR")}₺
+          </option>
+        ))}
+      </>
+    );
+  };
   // Update handleOrderItemSave function
   const handleOrderItemSave = async (categoryName, productIndex) => {
     try {
-      // Update local state first
       const updatedOrderData = { ...localOrderData };
       if (!updatedOrderData[categoryName]) {
         updatedOrderData[categoryName] = {};
       }
-
+  
+      const price = parseFloat(editingValues.price) || 0;
+  
       updatedOrderData[categoryName][productIndex] = {
         name: selectedProduct?.custom
           ? editingValues.name
           : selectedProduct?.title || selectedProduct?.name,
-        price: Number(editingValues.price),
+        price: price
       };
-
+  
       setLocalOrderData(updatedOrderData);
       setEditingItem(null);
       setSelectedProduct(null);
+      resetFormFields();
     } catch (error) {
       console.error("Error updating item:", error);
     }
@@ -330,7 +443,7 @@ const OrderEditModal = ({ isOpen, onClose, customer, orderKey, orderData }) => {
               </span>
               <div className="flex items-center justify-end gap-1">
                 <span className="text-green-400 text-xs">
-                  {item.price || "0"}₺
+                  {Number(item.price).toLocaleString("tr-TR") || "0"}₺
                 </span>
               </div>
               <div className="flex gap-1 justify-end">
@@ -539,16 +652,27 @@ const OrderEditModal = ({ isOpen, onClose, customer, orderKey, orderData }) => {
     setEditingSavedValues({
       category: item.category,
       product: item.product,
-      price: item.price,
+      price:  item.price
     });
   };
 
   // Add this new handler
   const handleSavedItemSave = (index) => {
     const updatedItems = [...savedItems];
-    updatedItems[index] = editingSavedValues;
+    const price = parseFloat(editingSavedValues.price) || 0;
+    
+    updatedItems[index] = {
+      ...editingSavedValues,
+      price: price
+    };
+    
     setSavedItems(updatedItems);
     setEditingSavedItem(null);
+    setEditingSavedValues({
+      category: "",
+      product: "",
+      price: ""
+    });
   };
 
   // Update the renderSavedItems function
@@ -656,7 +780,7 @@ const OrderEditModal = ({ isOpen, onClose, customer, orderKey, orderData }) => {
                 {item.product}
               </span>
               <div className="flex items-center justify-end gap-1">
-                <span className="text-green-400 text-xs">{item.price}₺</span>
+                <span className="text-green-400 text-xs">{Number(item.price).toLocaleString("tr-TR")}₺</span>
                 <div className="flex gap-1">
                   <button
                     onClick={() => handleSavedItemEdit(index, item)}
@@ -742,208 +866,182 @@ const OrderEditModal = ({ isOpen, onClose, customer, orderKey, orderData }) => {
 
   const renderOrderDetails = () => {
     return (
-      <div className="grid grid-cols-[1fr,380px] gap-4">
+      <div className="grid grid-cols-2 gap-4">
         {/* Sol Taraf - Mevcut Ürünler */}
         <div>
-          <div className="grid grid-cols-1 divide-y divide-gray-700/50">
-            {Object.entries(localOrderData)
-              .filter(
-                ([categoryName]) =>
-                  categoryName !== "status" &&
-                  categoryName !== "verandaWidth" &&
-                  categoryName !== "verandaHeight"
-              )
-              .sort(sortByCategories)
-              .map(([categoryName, products], index) => {
-                const category = Object.values(categories).find(
-                  (cat) =>
-                    cat.propertyName?.toLowerCase() ===
-                    categoryName.toLowerCase()
-                );
+        <div className="grid grid-cols-1 divide-y divide-gray-700/50">
+          {Object.entries(localOrderData)
+            .filter(
+              ([categoryName]) =>
+                categoryName !== "status" &&
+                categoryName !== "verandaWidth" &&
+                categoryName !== "verandaHeight"
+            )
+            .sort(sortByCategories)
+            .map(([categoryName, products], index) => {
+              const category = Object.values(categories).find(
+                (cat) =>
+                  cat.propertyName?.toLowerCase() === categoryName.toLowerCase()
+              );
 
-                return (
-                  <div key={index}>
-                    {Object.entries(products).map(([productIndex, product]) => (
-                      <div
+              return (
+                <div key={index}>
+                  {Object.entries(products).map(([productIndex, product]) => (
+                    <div
                       key={productIndex}
-                      className="grid grid-cols-[2fr,2fr,1fr,auto] items-center bg-gray-700/30 px-2 py-1 cursor-pointer"
-                      onClick={() =>
-                        !editingItem &&
-                        setEditingItem(`${categoryName}-${productIndex}`)
-                      }
+                      className="grid grid-cols-[2fr,2fr,1fr,auto] items-center bg-gray-700/30 px-2 py-1"
                     >
-   {editingItem === `${categoryName}-${productIndex}` ? (
-  <>
-    <span className="text-gray-400 text-xs truncate">
-      {category?.title || categoryName}
-    </span>
-    <div className="relative">
-      <select
-        value={selectedProduct ? JSON.stringify(selectedProduct) : ""}
-        onChange={(e) => handleProductSelect(e.target.value)}
-        className="bg-gray-600 text-xs text-gray-200 px-2 py-1.5 rounded outline-none w-full focus:bg-gray-500/50"
-      >
-        <option value="">Ürün Seçin</option>
-        <option value='{"custom":true}'>Diğer</option>
-        {products[categoryName] && 
-          Object.entries(products[categoryName])
-            .sort((a, b) => {
-              const orderA = a[1].order || 999;
-              const orderB = b[1].order || 999;
-              return orderA - orderB;
-            })
-            .map(([key, product]) => (
-              <option 
-                key={key} 
-                value={JSON.stringify(product)}
-              >
-                {product.title || product.name}
-              </option>
-            ))
-        }
-      </select>
-
-      {selectedProduct?.custom && (
-        <input
-          type="text"
-          value={editingValues.name}
-          onChange={(e) =>
-            setEditingValues({
-              ...editingValues,
-              name: e.target.value,
-            })
-          }
-          placeholder="Ürün Adı"
-          className="mt-1 bg-gray-600 text-xs text-gray-200 px-2 py-1.5 rounded outline-none w-full focus:bg-gray-500/50"
-        />
-      )}
-    </div>
-    <div className="flex items-center justify-end gap-1">
-      <input
-        type="number"
-        value={editingValues.price}
-        onChange={(e) =>
-          setEditingValues({
-            ...editingValues,
-            price: e.target.value,
-          })
-        }
-        className="bg-gray-600 text-xs text-gray-200 px-2 py-1.5 rounded outline-none w-full min-w-[80px] focus:bg-gray-500/50"
-      />
-      <div className="flex gap-1">
-        <button
-          onClick={() => handleOrderItemSave(categoryName, productIndex)}
-          className="text-green-400 hover:text-green-300 p-1"
-        >
-          <svg
-            className="w-3.5 h-3.5"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth="2"
-              d="M5 13l4 4L19 7"
-            />
-          </svg>
-        </button>
-        <button
-  onClick={(e) => {
-    e.stopPropagation();
-    handleOrderItemEdit(categoryName, productIndex, product); // Burada fonksiyonu çağırıyoruz
-  }}
-  className="text-gray-400 hover:text-blue-400 p-1"
+                      {editingItem === `${categoryName}-${productIndex}` ? (
+                        <>
+                          <span className="text-gray-400 text-xs truncate">
+                            {category?.title || categoryName}
+                          </span>
+                          <div className="relative">
+    <select
+  value={getSelectedProduct(categoryName, productIndex) ? 
+    JSON.stringify(getSelectedProduct(categoryName, productIndex)) : 
+    ""
+  }
+  onChange={(e) => handleProductSelect(e.target.value, categoryName, productIndex)}
+  className="bg-gray-600 text-xs text-gray-200 px-2 py-1.5 rounded outline-none w-full focus:bg-gray-500/50"
 >
-  <svg
-    className="w-3 h-3"
-    fill="none"
-    stroke="currentColor"
-    viewBox="0 0 24 24"
-  >
-    <path
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      strokeWidth="2"
-      d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"
-    />
-  </svg>
-</button>
-      </div>
-    </div>
-  </>
-                        ) : (
-                          <>
-                            <span className="text-gray-400 text-xs truncate hover:text-gray-300">
-                              {category?.title || categoryName}
+  {renderProductOptions(categoryName)}
+</select>
+
+                            {selectedProduct?.custom && (
+                              <input
+                                type="text"
+                                value={editingValues.name}
+                                onChange={(e) =>
+                                  setEditingValues({
+                                    ...editingValues,
+                                    name: e.target.value,
+                                  })
+                                }
+                                placeholder="Ürün Adı"
+                                className="mt-1 bg-gray-600 text-xs text-gray-200 px-2 py-1.5 rounded outline-none w-full focus:bg-gray-500/50"
+                              />
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="number"
+                              value={editingValues.price}
+                              onChange={(e) =>
+                                setEditingValues({
+                                  ...editingValues,
+                                  price: e.target.value,
+                                })
+                              }
+                              className="bg-gray-600 text-xs text-gray-200 px-2 py-1.5 rounded outline-none w-24 focus:bg-gray-500/50"
+                            />
+                            <span className="text-gray-400 text-xs">₺</span>
+                          </div>
+                          <div className="flex gap-1">
+                            <button
+                              onClick={() => handleOrderItemSave(categoryName, productIndex)}
+                              className="text-green-400 hover:text-green-300 p-1"
+                            >
+                              <svg
+                                className="w-3.5 h-3.5"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth="2"
+                                  d="M5 13l4 4L19 7"
+                                />
+                              </svg>
+                            </button>
+                            <button
+                              onClick={() => setEditingItem(null)}
+                              className="text-red-400 hover:text-red-300 p-1"
+                            >
+                              <svg
+                                className="w-3.5 h-3.5"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth="2"
+                                  d="M6 18L18 6M6 6l12 12"
+                                />
+                              </svg>
+                            </button>
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <span className="text-gray-400 text-xs truncate">
+                            {category?.title || categoryName}
+                          </span>
+                          <span 
+                            className="text-gray-300 text-xs truncate cursor-pointer hover:text-gray-200"
+                            onClick={() => handleOrderItemEdit(categoryName, productIndex, product)}
+                          >
+                            {product.name || product.title}
+                          </span>
+                          <div 
+                            className="flex items-center justify-end gap-1 cursor-pointer hover:opacity-80"
+                            onClick={() => handleOrderItemEdit(categoryName, productIndex, product)}
+                          >
+                            <span className="text-green-400 text-xs">
+                              {Number(product.price)?.toLocaleString("tr-TR")}₺
                             </span>
-                            <span className="text-gray-300 text-xs truncate hover:text-gray-200">
-                              {product.name || product.title}
-                            </span>
-                            <div className="flex items-center justify-end gap-1">
-                              <span className="text-green-400 text-xs">
-                                {product.price?.toLocaleString("tr-TR")}₺
-                              </span>
-                              <div className="flex gap-1">
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setEditingItem(
-                                      `${categoryName}-${productIndex}`
-                                    );
-                                  }}
-                                  className="text-gray-400 hover:text-blue-400 p-1"
-                                >
-                                  <svg
-                                    className="w-3 h-3"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    viewBox="0 0 24 24"
-                                  >
-                                    <path
-                                      strokeLinecap="round"
-                                      strokeLinejoin="round"
-                                      strokeWidth="2"
-                                      d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"
-                                    />
-                                  </svg>
-                                </button>
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleDeleteOrderItem(
-                                      categoryName,
-                                      productIndex
-                                    );
-                                  }}
-                                  className="text-red-400 hover:text-red-300 p-1"
-                                >
-                                  <svg
-                                    className="w-3 h-3"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    viewBox="0 0 24 24"
-                                  >
-                                    <path
-                                      strokeLinecap="round"
-                                      strokeLinejoin="round"
-                                      strokeWidth="2"
-                                      d="M6 18L18 6M6 6l12 12"
-                                    />
-                                  </svg>
-                                </button>
-                              </div>
-                            </div>
-                          </>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                );
-              })}
-          </div>
+                          </div>
+                          <div className="flex gap-1">
+                            <button
+                              onClick={() => handleOrderItemEdit(categoryName, productIndex, product)}
+                              className="text-gray-400 hover:text-blue-400 p-1"
+                            >
+                              <svg
+                                className="w-3 h-3"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth="2"
+                                  d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"
+                                />
+                              </svg>
+                            </button>
+                            <button
+                              onClick={() => handleDeleteOrderItem(categoryName, productIndex)}
+                              className="text-red-400 hover:text-red-300 p-1"
+                            >
+                              <svg
+                                className="w-3 h-3"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth="2"
+                                  d="M6 18L18 6M6 6l12 12"
+                                />
+                              </svg>
+                            </button>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              );
+            })}
         </div>
+      </div>
 
         {/* Sağ Taraf - Yeni Ürün */}
 
