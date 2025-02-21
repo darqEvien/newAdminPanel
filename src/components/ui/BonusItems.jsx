@@ -1,6 +1,5 @@
 import { useState, useCallback } from 'react';
 import PropTypes from 'prop-types';
-import useKeyboardShortcuts from './useKeybordShortcuts'
 
 const BonusItems = ({
   savedItems,
@@ -10,10 +9,8 @@ const BonusItems = ({
   setSavedItems,
   setNewItems
 }) => {
-    const [editingItem, setEditingItem] = useState(null);
+  const [editingItem, setEditingItem] = useState(null);
   const [editingNewItem, setEditingNewItem] = useState(null);
-  const [editingField, setEditingField] = useState(null);
-  const [activeIndex, setActiveIndex] = useState(0);
   const [editingValues, setEditingValues] = useState({
     category: '',
     product: '',
@@ -22,91 +19,31 @@ const BonusItems = ({
     isCustomProduct: false,
     productId: null
   });
-  const [isShortcutsVisible, setIsShortcutsVisible] = useState(false);
 
-  // Handler functions defined before useKeyboardShortcuts
-  const handleNext = useCallback(() => {
-    setActiveIndex(prev => Math.min(prev + 1, savedItems.length - 1));
-  }, [savedItems.length]);
+  const handleDelete = useCallback((index) => {
+    setSavedItems(prev => prev.filter((_, idx) => idx !== index));
+  }, [setSavedItems]);
 
-  const handlePrev = useCallback(() => {
-    setActiveIndex(prev => Math.max(prev - 1, 0));
-  }, []);
-
-  const handleStartEdit = useCallback((index, field, item) => {
+  const handleEdit = useCallback((index) => {
+    const item = savedItems[index];
     setEditingItem(index);
-    setEditingField(field);
+    setEditingValues({
+      category: item.category,
+      product: item.product,
+      price: item.price,
+      isCustomCategory: item.isCustomCategory,
+      isCustomProduct: item.isCustomProduct,
+      productId: item.productId
+    });
+  }, [savedItems]);
+
+  const handleStartPriceEdit = useCallback((index, item) => {
+    setEditingItem(index);
     setEditingValues({
       ...item,
       price: item.price.toString()
     });
   }, []);
-
-  const handleEditSave = useCallback((index) => {
-    setSavedItems(prev => {
-      const updated = [...prev];
-      updated[index] = {
-        ...prev[index],
-        price: editingValues.price
-      };
-      return updated;
-    });
-    setEditingItem(null);
-    setEditingField(null);
-  }, [setSavedItems, editingValues]);
-
-  const handleCancel = useCallback(() => {
-    setEditingItem(null);
-    setEditingField(null);
-  }, []);
-
-  const handleAddNewItem = useCallback(() => {
-    setNewItems(prev => [...prev, {
-      category: '',
-      product: '',
-      price: '',
-      isCustomCategory: false,
-      isCustomProduct: false
-    }]);
-  }, [setNewItems]);
-
-  // Now we can use useKeyboardShortcuts after all handlers are defined
-  const { isMac } = useKeyboardShortcuts({
-    items: savedItems,
-    currentIndex: activeIndex,
-    currentField: editingField,
-    isEditing: editingItem !== null,
-    onNext: handleNext,
-    onPrev: handlePrev,
-    onStartEdit: handleStartEdit,
-    onSave: handleEditSave,
-    onCancel: handleCancel,
-    onNewItem: handleAddNewItem
-  });
-  const handleDelete = useCallback((index) => {
-    setSavedItems(prev => prev.filter((_, idx) => idx !== index));
-  }, [setSavedItems]);
-
-//   const handleEdit = useCallback((index) => {
-//     const item = savedItems[index];
-//     setEditingItem(index);
-//     setEditingValues({
-//       category: item.category,
-//       product: item.product,
-//       price: item.price,
-//       isCustomCategory: item.isCustomCategory,
-//       isCustomProduct: item.isCustomProduct,
-//       productId: item.productId
-//     });
-//   }, [savedItems]);
-
-//   const handleStartPriceEdit = useCallback((index, item) => {
-//     setEditingItem(index);
-//     setEditingValues({
-//       ...item,
-//       price: item.price.toString()
-//     });
-//   }, []);
 
   // Yeni ürün için fiyat düzenleme başlatma
   const handleStartNewItemPriceEdit = useCallback((index, item) => {
@@ -117,9 +54,6 @@ const BonusItems = ({
     });
   }, []);
   
-
-
-  // Fiyat değişikliği
   const handlePriceChange = useCallback((e) => {
     setEditingValues(prev => ({
       ...prev,
@@ -139,60 +73,17 @@ const BonusItems = ({
     });
   }, [setNewItems]);
   
-  const handleSavedCategoryChange = useCallback((index, value) => {
+  const handleEditSave = useCallback((index) => {
     setSavedItems(prev => {
       const updated = [...prev];
-      if (value === 'custom') {
-        updated[index] = {
-          ...updated[index],
-          category: '',
-          product: '',
-          productId: null,
-          isCustomCategory: true,
-          isCustomProduct: true
-        };
-      } else {
-        updated[index] = {
-          ...updated[index],
-          category: value,
-          product: '',
-          productId: null,
-          isCustomCategory: false,
-          isCustomProduct: false
-        };
-      }
+      updated[index] = {
+        ...prev[index],
+        price: editingValues.price
+      };
       return updated;
     });
-    setEditingField(null);
-  }, [setSavedItems]);
-
-  // Kaydedilmiş ürün için ürün değiştirme
-  const handleSavedProductChange = useCallback((index, value) => {
-    setSavedItems(prev => {
-      const updated = [...prev];
-      if (value === 'custom') {
-        updated[index] = {
-          ...updated[index],
-          product: '',
-          productId: null,
-          isCustomProduct: true
-        };
-      } else {
-        const selectedProduct = JSON.parse(value);
-        updated[index] = {
-          ...updated[index],
-          product: selectedProduct.name,
-          productId: selectedProduct.id,
-          price: selectedProduct.price?.toString() || '0',
-          isCustomProduct: false
-        };
-      }
-      return updated;
-    });
-    setEditingField(null);
-  }, [setSavedItems]);
-
-
+    setEditingItem(null);
+  }, [setSavedItems, editingValues]);
 
   // Kategorileri sırala
   const sortedCategories = useCallback(() => {
@@ -200,7 +91,15 @@ const BonusItems = ({
   }, [categories]);
 
   // Yeni item ekleme
-
+  const handleAddNewItem = () => {
+    setNewItems(prev => [...prev, {
+      category: '',
+      product: '',
+      price: '',
+      isCustomCategory: false,
+      isCustomProduct: false
+    }]);
+  };
 
   // Kategori seçimi
   const handleCategorySelect = (index, value) => {
@@ -274,159 +173,25 @@ const BonusItems = ({
   const handleRemoveItem = (index) => {
     setNewItems(prev => prev.filter((_, idx) => idx !== index));
   };
-  const handleSavedCustomInput = useCallback((index, field, value) => {
-    setSavedItems(prev => {
-      const updated = [...prev];
-      updated[index] = {
-        ...updated[index],
-        [field]: value
-      };
-      return updated;
-    });
-  }, [setSavedItems]);
-  return (
-    
-    <div className="space-y-4">
-      <div className="text-xs text-gray-500">
-    <button
-      onClick={() => setIsShortcutsVisible(!isShortcutsVisible)}
-      className="flex items-center gap-2 hover:text-gray-400 transition-colors"
-    >
-      <svg
-        className={`w-4 h-4 transform transition-transform ${
-          isShortcutsVisible ? 'rotate-180' : ''
-        }`}
-        fill="none"
-        stroke="currentColor"
-        viewBox="0 0 24 24"
-      >
-        <path
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          strokeWidth="2"
-          d="M19 9l-7 7-7-7"
-        />
-      </svg>
-      <span>Klavye Kısayolları</span>
-    </button>
 
-    {isShortcutsVisible && (
-  <div className="mt-2 space-y-1 pl-6">
-    <ul className="list-disc list-inside">
-      <li>{isMac ? '⌥' : 'Alt'} + ↑/↓: Öğeler arası gezinme</li>
-      <li>{isMac ? '⌥' : 'Alt'} + 1/2/3: Sırasıyla Kategori/Ürün/Fiyat düzenleme</li>
-      <li>{isMac ? '⌥' : 'Alt'} + N: Yeni ürün ekle</li>
-      <li>Tab / {isMac ? '⇧' : 'Shift'}+Tab: Alanlar arası gezinme</li>
-      <li>{isMac ? '⎋' : 'Esc'}: Düzenlemeyi iptal et</li>
-      <li>{isMac ? '↵' : 'Enter'}: Değişiklikleri kaydet</li>
-    </ul>
-  </div>
-)}
-  </div>
+  return (
+    <div className="space-y-4">
       {/* Kayıtlı Bonus Ürünler */}
       {savedItems.map((item, index) => (
-         <div 
-         key={index} 
-         className={`bg-gray-800/30 p-2 rounded ${activeIndex === index ? 'ring-2 ring-blue-500' : ''}`}
-       >
+        <div key={index} className="bg-gray-800/30 p-2 rounded">
           <div className="grid grid-cols-[2fr,2fr,1fr,auto] gap-2 items-center">
             {/* Kategori */}
-            {editingField === 'category' && editingItem === index ? (
-              <div>
-                {item.isCustomCategory ? (
-                  <input
-                    type="text"
-                    value={item.category}
-                    onChange={(e) => handleSavedCustomInput(index, 'category', e.target.value)}
-                    onBlur={() => setEditingField(null)}
-                    placeholder="Kategori Adı"
-                    className="bg-gray-600 text-xs text-gray-200 px-2 py-1.5 rounded outline-none w-full"
-                    autoFocus
-                  />
-                ) : (
-                  <select
-                    value={item.category}
-                    onChange={(e) => handleSavedCategoryChange(index, e.target.value)}
-                    onBlur={() => setEditingField(null)}
-                    className="bg-gray-600 text-xs text-gray-200 px-2 py-1.5 rounded outline-none w-full"
-                    autoFocus
-                  >
-                    <option value="">Kategori Seçin</option>
-                    {sortedCategories().map((category) => (
-                      <option key={category.propertyName} value={category.propertyName}>
-                        {category.title}
-                      </option>
-                    ))}
-                    <option value="custom">Diğer</option>
-                  </select>
-                )}
-              </div>
-            ) : (
-              <span 
-                className="text-gray-400 text-xs cursor-pointer hover:text-gray-300"
-                onClick={() => handleStartEdit(index, 'category', item)}
-              >
-                {categories[item.category]?.title || item.category}
-              </span>
-            )}
+            <span className="text-gray-400 text-xs">
+              {categories[item.category]?.title || item.category}
+            </span>
             
             {/* Ürün */}
-            {editingField === 'product' && editingItem === index ? (
-              <div>
-                {item.isCustomProduct ? (
-                  <input
-                    type="text"
-                    value={item.product}
-                    onChange={(e) => handleSavedCustomInput(index, 'product', e.target.value)}
-                    onBlur={() => setEditingField(null)}
-                    placeholder="Ürün Adı"
-                    className="bg-gray-600 text-xs text-gray-200 px-2 py-1.5 rounded outline-none w-full"
-                    autoFocus
-                  />
-                ) : (
-                  <select
-                    value={item.productId ? JSON.stringify({
-                      id: item.productId,
-                      name: item.product,
-                      price: item.price
-                    }) : "custom"}
-                    onChange={(e) => handleSavedProductChange(index, e.target.value)}
-                    onBlur={() => setEditingField(null)}
-                    className="bg-gray-600 text-xs text-gray-200 px-2 py-1.5 rounded outline-none w-full"
-                    autoFocus
-                  >
-                    <option value="">Ürün Seçin</option>
-                    {products[item.category] && 
-                      Object.entries(products[item.category])
-                        .sort(([,a], [,b]) => (a.order || 999) - (b.order || 999))
-                        .map(([key, product]) => (
-                          <option 
-                            key={key} 
-                            value={JSON.stringify({
-                              id: key,
-                              name: product.title || product.name,
-                              price: product.price
-                            })}
-                          >
-                            {product.title || product.name} - {Number(product.price).toLocaleString('tr-TR')}₺
-                          </option>
-                        ))
-                    }
-                    <option value="custom">Diğer</option>
-                  </select>
-                )}
-              </div>
-            ) : (
-              <span 
-                className="text-gray-300 text-xs cursor-pointer hover:text-gray-200"
-                onClick={() => handleStartEdit(index, 'product', item)}
-              >
-                {item.product}
-              </span>
-            )}
+            <span className="text-gray-300 text-xs">
+              {item.product}
+            </span>
             
             {/* Fiyat */}
-            {editingField === 'price' && editingItem === index ? (
+            {editingItem === index ? (
               <input
                 type="number"
                 value={editingValues.price}
@@ -439,7 +204,7 @@ const BonusItems = ({
             ) : (
               <span 
                 className="text-green-400 text-xs cursor-pointer hover:text-green-300"
-                onClick={() => handleStartEdit(index, 'price', item)}
+                onClick={() => handleStartPriceEdit(index, item)}
               >
                 {Number(item.price).toLocaleString('tr-TR')}₺
               </span>
@@ -459,7 +224,6 @@ const BonusItems = ({
           </div>
         </div>
       ))}
-
 
       {/* Yeni Bonus Ürün Ekleme Formları */}
       {newItems.map((item, index) => (

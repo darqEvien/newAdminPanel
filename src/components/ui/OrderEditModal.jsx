@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect ,useCallback} from "react";
 import { Dialog, DialogContent } from "./dialogForCustomers";
 import { ref, get, set } from "firebase/database";
 import { database } from "../../firebase/firebaseConfig";
@@ -29,11 +29,41 @@ const OrderEditModal = ({ isOpen, onClose, customer, orderKey, orderData }) => {
     priceOnly: false
   });
   const [newItems, setNewItems] = useState([{ category: "", product: "", price: "" }]);
+  const [dimensions, setDimensions] = useState({
+    kontiWidth: orderData?.dimensions?.kontiWidth || 0,
+    kontiHeight: orderData?.dimensions?.kontiHeight || 0,
+    verandaWidth: orderData?.dimensions?.verandaWidth || "Seçilmedi",
+    verandaHeight: orderData?.dimensions?.verandaHeight || "Seçilmedi"
+  });
 
-  // Notlar için state'ler
-//   const [isAddingNote, setIsAddingNote] = useState(false);
-//   const [newNote, setNewNote] = useState("");
-//   const [notesLoading, setNotesLoading] = useState(false);
+  // Konti değişikliklerini izleme fonksiyonu
+  const handleKontiChange = useCallback((categoryName, product) => {
+    if (product && categories[categoryName]?.priceFormat === 'konti') {
+      setDimensions(prev => ({
+        ...prev,
+        kontiWidth: Number(product.width) || 0,
+        kontiHeight: Number(product.height) || 0
+      }));
+    }
+  }, [categories]);
+
+  // En/Boy değişikliklerini izleme
+  const handleDimensionChange = useCallback((categoryName, product) => {
+    if (categories[categoryName]?.priceFormat === 'artis') {
+      if (categoryName === 'en') {
+        setDimensions(prev => ({
+          ...prev,
+          kontiWidth: prev.kontiWidth + (Number(product.width) || 0)
+        }));
+      } else if (categoryName === 'boy') {
+        setDimensions(prev => ({
+          ...prev,
+          kontiHeight: prev.kontiHeight + (Number(product.height) || 0)
+        }));
+      }
+    }
+  }, []);
+
 
   // Initial data fetch
   useEffect(() => {
@@ -182,6 +212,12 @@ OrderEditModal.propTypes = {
     orderKey: PropTypes.string.isRequired,
     orderData: PropTypes.shape({
       status: PropTypes.string,
+      dimensions: PropTypes.shape({
+        kontiWidth: PropTypes.number,
+        kontiHeight: PropTypes.number,
+        verandaWidth: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
+        verandaHeight: PropTypes.oneOfType([PropTypes.string, PropTypes.number])
+      }),
       verandaWidth: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
       verandaHeight: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
       // Her kategori için dinamik nesne yapısı
