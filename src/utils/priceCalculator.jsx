@@ -5,8 +5,7 @@ export const calculatePrice = ({
     height = 0,
     kontiWidth = 0,
     kontiHeight = 0,
-    previousArea = 0,
-    alanPrice = 0
+   
   }) => {
     // Move all declarations outside switch
     let area = 0;
@@ -15,7 +14,7 @@ export const calculatePrice = ({
     let newWidth = 0;
     let newHeight = 0;
     let newArea = 0;
-    let kontiProductArea = 0;
+
 
     switch (priceFormat) {
       case 'tekil':
@@ -32,12 +31,11 @@ export const calculatePrice = ({
       case 'artis':
         // Konti alanı
         kontiArea = kontiWidth * kontiHeight;
-        // Yeni alan
-        newWidth = Number(kontiWidth) + Number(width);
-        newHeight = Number(kontiHeight) + Number(height);
-        newArea = newWidth * newHeight;
-        // Alan farkı * birim fiyat
-        return (newArea - kontiArea) * Number(basePrice);
+      newWidth = Number(kontiWidth) + Number(width);
+      newHeight = Number(kontiHeight) + Number(height);
+      newArea = newWidth * newHeight;
+      return (newArea - kontiArea) * Number(basePrice);
+
   
       case 'tasDuvar':
         return Number(basePrice);

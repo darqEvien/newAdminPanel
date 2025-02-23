@@ -1,4 +1,4 @@
-import { useState, useEffect ,useCallback} from "react";
+import { useState, useEffect } from "react";
 import { Dialog, DialogContent } from "./dialogForCustomers";
 import { ref, get, set } from "firebase/database";
 import { database } from "../../firebase/firebaseConfig";
@@ -26,44 +26,18 @@ const OrderEditModal = ({ isOpen, onClose, customer, orderKey, orderData }) => {
     category: "",
     product: "",
     price: "",
-    priceOnly: false
+    priceOnly: false,
   });
-  const [newItems, setNewItems] = useState([{ category: "", product: "", price: "" }]);
+  const [newItems, setNewItems] = useState([
+    { category: "", product: "", price: "" },
+  ]);
   const [dimensions, setDimensions] = useState({
-    kontiWidth: orderData?.dimensions?.kontiWidth || 0,
-    kontiHeight: orderData?.dimensions?.kontiHeight || 0,
-    verandaWidth: orderData?.dimensions?.verandaWidth || "Seçilmedi",
-    verandaHeight: orderData?.dimensions?.verandaHeight || "Seçilmedi"
+    kontiWidth: dimensions?.kontiWidth || 0,
+    kontiHeight: dimensions?.kontiHeight || 0,
+    verandaWidth: dimensions?.verandaWidth || "Seçilmedi",
+    verandaHeight: dimensions?.verandaHeight || "Seçilmedi",
+    length: dimensions?.length || 0,
   });
-
-  // Konti değişikliklerini izleme fonksiyonu
-  const handleKontiChange = useCallback((categoryName, product) => {
-    if (product && categories[categoryName]?.priceFormat === 'konti') {
-      setDimensions(prev => ({
-        ...prev,
-        kontiWidth: Number(product.width) || 0,
-        kontiHeight: Number(product.height) || 0
-      }));
-    }
-  }, [categories]);
-
-  // En/Boy değişikliklerini izleme
-  const handleDimensionChange = useCallback((categoryName, product) => {
-    if (categories[categoryName]?.priceFormat === 'artis') {
-      if (categoryName === 'en') {
-        setDimensions(prev => ({
-          ...prev,
-          kontiWidth: prev.kontiWidth + (Number(product.width) || 0)
-        }));
-      } else if (categoryName === 'boy') {
-        setDimensions(prev => ({
-          ...prev,
-          kontiHeight: prev.kontiHeight + (Number(product.height) || 0)
-        }));
-      }
-    }
-  }, []);
-
 
   // Initial data fetch
   useEffect(() => {
@@ -71,7 +45,7 @@ const OrderEditModal = ({ isOpen, onClose, customer, orderKey, orderData }) => {
       try {
         const [categoriesSnapshot, productsSnapshot] = await Promise.all([
           get(ref(database, "categories")),
-          get(ref(database, "products"))
+          get(ref(database, "products")),
         ]);
 
         if (categoriesSnapshot.exists()) {
@@ -88,24 +62,19 @@ const OrderEditModal = ({ isOpen, onClose, customer, orderKey, orderData }) => {
     fetchInitialData();
   }, []);
 
-  // orderData değişikliklerini izle
-  useEffect(() => {
-    setLocalOrderData(orderData);
-  }, [orderData]);
-
   // Ana kaydetme fonksiyonu
   const handleSaveChanges = async () => {
     try {
       await Promise.all([
         set(ref(database, `customers/${orderKey}/products/0`), localOrderData),
-        set(ref(database, `customers/${orderKey}/bonus`), savedItems)
+        set(ref(database, `customers/${orderKey}/bonus`), savedItems),
       ]);
       onClose();
     } catch (error) {
       console.error("Error saving changes:", error);
     }
   };
-return (
+  return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="max-w-[90vw] w-[90vw] h-[85vh] max-h-[85vh] p-0 flex flex-col bg-gray-900">
         {/* Header */}
@@ -118,13 +87,23 @@ return (
               onClick={onClose}
               className="text-gray-400 hover:text-gray-300 transition-colors"
             >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+              <svg
+                className="w-5 h-5"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                  d="M6 18L18 6M6 6l12 12"
+                />
               </svg>
             </button>
           </div>
         </div>
-  
+
         {/* Main Content */}
         <div className="flex-1 overflow-hidden">
           <div className="flex h-full">
@@ -135,7 +114,7 @@ return (
                 <div className="bg-gray-800/40 rounded-lg p-4 backdrop-blur-sm">
                   <CustomerInfo customer={customer} />
                 </div>
-                
+
                 {/* Order Details Card */}
                 <div className="bg-gray-800/40 rounded-lg p-4 backdrop-blur-sm">
                   <div className="flex items-center justify-between mb-4">
@@ -146,7 +125,7 @@ return (
                       {Object.keys(localOrderData).length} Ürün
                     </span>
                   </div>
-                  <OrderDetails 
+                  <OrderDetails
                     categories={categories}
                     products={products}
                     localOrderData={localOrderData}
@@ -158,36 +137,38 @@ return (
                     setEditingValues={setEditingValues}
                     setLocalOrderData={setLocalOrderData}
                     orderKey={orderKey}
+                    dimensions={dimensions}
+                    setDimensions={setDimensions}
                   />
                 </div>
               </div>
             </div>
-  
+
             {/* Right Panel */}
             <div className="w-[500px] flex flex-col h-full bg-gray-800/30 border-l border-gray-700">
-  <div className="p-4 border-b border-gray-800">
-    <h2 className="text-lg font-medium text-gray-200">
-      Bonus Ürünler
-    </h2>
-  </div>
-  <div className="flex-1 overflow-y-auto p-4">
-    <BonusItems 
-      savedItems={savedItems}
-      newItems={newItems}
-      categories={categories}
-      products={products}
-      editingSavedItem={editingSavedItem}
-      editingSavedValues={editingSavedValues}
-      setSavedItems={setSavedItems}
-      setNewItems={setNewItems}
-      setEditingSavedItem={setEditingSavedItem}
-      setEditingSavedValues={setEditingSavedValues}
-    />
-  </div>
-</div>
+              <div className="p-4 border-b border-gray-800">
+                <h2 className="text-lg font-medium text-gray-200">
+                  Bonus Ürünler
+                </h2>
+              </div>
+              <div className="flex-1 overflow-y-auto p-4">
+                <BonusItems
+                  savedItems={savedItems}
+                  newItems={newItems}
+                  categories={categories}
+                  products={products}
+                  editingSavedItem={editingSavedItem}
+                  editingSavedValues={editingSavedValues}
+                  setSavedItems={setSavedItems}
+                  setNewItems={setNewItems}
+                  setEditingSavedItem={setEditingSavedItem}
+                  setEditingSavedValues={setEditingSavedValues}
+                />
+              </div>
+            </div>
           </div>
         </div>
-  
+
         {/* Footer */}
         <div className="border-t border-gray-800 bg-gray-900/95 backdrop-blur-sm p-4">
           <OrderSummary
@@ -202,32 +183,32 @@ return (
   );
 };
 OrderEditModal.propTypes = {
-    isOpen: PropTypes.bool.isRequired,
-    onClose: PropTypes.func.isRequired,
-    customer: PropTypes.shape({
-      fullName: PropTypes.string.isRequired,
-      email: PropTypes.string,
-      phone: PropTypes.string
-    }).isRequired,
-    orderKey: PropTypes.string.isRequired,
-    orderData: PropTypes.shape({
-      status: PropTypes.string,
-      dimensions: PropTypes.shape({
-        kontiWidth: PropTypes.number,
-        kontiHeight: PropTypes.number,
-        verandaWidth: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
-        verandaHeight: PropTypes.oneOfType([PropTypes.string, PropTypes.number])
-      }),
+  isOpen: PropTypes.bool.isRequired,
+  onClose: PropTypes.func.isRequired,
+  customer: PropTypes.shape({
+    fullName: PropTypes.string.isRequired,
+    email: PropTypes.string,
+    phone: PropTypes.string,
+  }).isRequired,
+  orderKey: PropTypes.string.isRequired,
+  orderData: PropTypes.shape({
+    status: PropTypes.string,
+    dimensions: PropTypes.shape({
+      kontiWidth: PropTypes.number,
+      kontiHeight: PropTypes.number,
       verandaWidth: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
       verandaHeight: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
-      // Her kategori için dinamik nesne yapısı
-      [PropTypes.string]: PropTypes.objectOf(
-        PropTypes.shape({
-          name: PropTypes.string.isRequired,
-          price: PropTypes.number.isRequired,
-          productCollectionId: PropTypes.string
-        })
-      )
-    }).isRequired};
+      length: PropTypes.number,
+    }),
+    // Her kategori için dinamik nesne yapısı
+    [PropTypes.string]: PropTypes.objectOf(
+      PropTypes.shape({
+        name: PropTypes.string.isRequired,
+        price: PropTypes.number.isRequired,
+        productCollectionId: PropTypes.string,
+      })
+    ),
+  }).isRequired,
+};
 
 export default OrderEditModal;

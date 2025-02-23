@@ -7,7 +7,8 @@ const BonusItems = ({
   categories,
   products,
   setSavedItems,
-  setNewItems
+  setNewItems,
+  localOrderData
 }) => {
   const [editingItem, setEditingItem] = useState(null);
   const [editingNewItem, setEditingNewItem] = useState(null);
@@ -19,6 +20,14 @@ const BonusItems = ({
     isCustomProduct: false,
     productId: null
   });
+
+  const hasKontiInOrder = useCallback(() => {
+    return Object.entries(localOrderData)
+      .some(([category, products]) => 
+        category.toLowerCase() === 'konti' && 
+        Object.values(products).length > 0
+      );
+  }, [localOrderData]);
 
   const handleDelete = useCallback((index) => {
     setSavedItems(prev => prev.filter((_, idx) => idx !== index));
@@ -101,8 +110,15 @@ const BonusItems = ({
     }]);
   };
 
-  // Kategori seçimi
-  const handleCategorySelect = (index, value) => {
+// Add this check in handleCategorySelect
+ const handleCategorySelect = (index, value) => {
+    if (value.toLowerCase() === 'konti') {
+      if (hasKontiInOrder()) {
+        alert('Bir siparişte sadece 1 adet konti seçilebilir! Lütfen başka bir kategori seçin.');
+        return;
+      }
+    }
+
     const updatedItems = [...newItems];
     if (value === 'custom') {
       updatedItems[index] = {
@@ -360,7 +376,8 @@ BonusItems.propTypes = {
   categories: PropTypes.object.isRequired,
   products: PropTypes.object.isRequired,
   setSavedItems: PropTypes.func.isRequired,
-  setNewItems: PropTypes.func.isRequired
+  setNewItems: PropTypes.func.isRequired,
+  localOrderData: PropTypes.object.isRequired,
 };
 
 export default BonusItems;
