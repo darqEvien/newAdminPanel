@@ -144,12 +144,24 @@ const OrderDetails = ({
           setLocalOrderData((prev) => {
             const newData = { ...prev };
             // Artis kategorisindeki ürünleri temizle
-            Object.entries(categories).forEach(([key, cat]) => {
-              if (cat.priceFormat === "artis") {
-                delete newData[key];
+            Object.entries(prev).forEach(([key, categoryData]) => {
+              // En veya boy içeren kategori adlarını kontrol et
+              if (
+                key.toLowerCase().includes("en") ||
+                key.toLowerCase().includes("boy")
+              ) {
+                // Bu kategorideki ürünleri "İstemiyorum" yap
+                newData[key] = {
+                  0: {
+                    name: "İstemiyorum",
+                    price: 0,
+                    productCollectionId: "istemiyorum",
+                    width: 0,
+                    height: 0,
+                  },
+                };
               }
             });
-
             // Konti boyutlarını güncelle
             return {
               ...newData,
@@ -185,68 +197,81 @@ const OrderDetails = ({
         // Artis kategori işlemleri
         if (category?.priceFormat === "artis") {
           const currentProduct = localOrderData[categoryName]?.[productIndex];
-          const updatedKontiWidth =
-            dimensions.kontiWidth -
-            (currentProduct?.width || 0) +
-            (productData?.width || 0);
-          const updatedKontiHeight =
-            Number(dimensions.kontiHeight) -
-            (currentProduct?.height || 0) +
-            (productData?.height || 0);
+
+          // Mevcut konti boyutlarını al
+          const currentKontiWidth = Number(dimensions.kontiWidth) || 0;
+          const currentKontiHeight = Number(dimensions.kontiHeight) || 0;
+
+          // Eski ürün boyutlarını çıkar (varsa)
+          const oldWidth = Number(currentProduct?.width || 0);
+          const oldHeight = Number(currentProduct?.height || 0);
+
+          // Önce eski ürünü çıkar
+          const afterRemovalWidth = currentKontiWidth - oldWidth;
+          const afterRemovalHeight = currentKontiHeight - oldHeight;
+
+          // Yeni ürün boyutlarını al
+          const newWidth = Number(productData?.width || 0);
+          const newHeight = Number(productData?.height || 0);
+
+          // Sonra yeni ürünü ekle
+          const updatedKontiWidth = afterRemovalWidth + newWidth;
+          const updatedKontiHeight = afterRemovalHeight + newHeight;
 
           console.log("Artis Ürün Değişikliği:", {
             ürün: selectedProduct.name,
             eskiÜrün: currentProduct?.name,
-            eskiKontiWidth: dimensions.kontiWidth,
-            eskiKontiHeight: dimensions.kontiHeight,
-            yeniKontiWidth: updatedKontiWidth,
-            yeniKontiHeight: updatedKontiHeight,
-            değişim: {
-              width: (productData?.width || 0) - (currentProduct?.width || 0),
-              height:
-                (productData?.height || 0) - (currentProduct?.height || 0),
+            boyutlar: {
+              başlangıç: `${currentKontiWidth}x${currentKontiHeight}`,
+              eskiÜrünSilinmiş: `${afterRemovalWidth}x${afterRemovalHeight}`,
+              yeniÜrünEklenmiş: `${updatedKontiWidth}x${updatedKontiHeight}`,
+              değişim: {
+                çıkarılan: `${oldWidth}x${oldHeight}`,
+                eklenen: `${newWidth}x${newHeight}`,
+              },
             },
           });
-          // Eski ürün boyutlarını çıkar
-          if (currentProduct) {
-            setDimensions((prev) => ({
-              ...prev,
-              kontiWidth: updatedKontiWidth,
-              kontiHeight: updatedKontiHeight,
-            }));
-          }
 
-          // Yeni ürün boyutlarını ekle
-          if (productData) {
-            setDimensions((prev) => ({
-              ...prev,
-              kontiWidth: prev.kontiWidth + (productData.width || 0),
-              kontiHeight: prev.kontiHeight + (productData.height || 0),
-            }));
-          }
+          // Önce dimensions'ı güncelle
+          setDimensions((prev) => ({
+            ...prev,
+            kontiWidth: updatedKontiWidth,
+            kontiHeight: updatedKontiHeight,
+          }));
 
+          // Fiyat hesaplama için artan alanı kullan
           const calcPrice = calculatePrice({
             priceFormat: "artis",
-            basePrice: selectedProduct.price,
-            width: productData?.width || 0,
-            height: productData?.height || 0,
-            kontiWidth: updatedKontiWidth, // Güncel değer
-            kontiHeight: updatedKontiHeight, // Güncel değer
+            basePrice: Number(selectedProduct.price),
+            width: newWidth,
+            height: newHeight,
+            kontiWidth: afterRemovalWidth, // Eski ürün çıkarıldıktan sonraki genişlik
+            kontiHeight: afterRemovalHeight, // Eski ürün çıkarıldıktan sonraki yükseklik
+            newKontiWidth: updatedKontiWidth, // Yeni ürün eklendikten sonraki genişlik
+            newKontiHeight: updatedKontiHeight, // Yeni ürün eklendikten sonraki yükseklik
           });
+
           setEditingValues({
             name: selectedProduct.name,
-            price: calcPrice.toString(), // Hesaplanan fiyatı string'e çevirip state'e aktar
+            price: calcPrice.toString(),
           });
+
+          // LocalOrderData güncelleme
           setLocalOrderData((prev) => ({
             ...prev,
+            dimensions: {
+              ...prev.dimensions,
+              kontiWidth: updatedKontiWidth,
+              kontiHeight: updatedKontiHeight,
+            },
             [categoryName]: {
               ...prev[categoryName],
               [productIndex]: {
                 name: selectedProduct.name,
                 price: calcPrice,
                 productCollectionId: selectedProduct.id,
-                width: productData?.width || 0,
-                height: productData?.height || 0,
+                width: newWidth,
+                height: newHeight,
               },
             },
           }));
@@ -324,7 +349,14 @@ const OrderDetails = ({
       {Object.entries(localOrderData)
         .filter(
           ([categoryName]) =>
-            !["status", "verandaWidth", "verandaHeight"].includes(categoryName)
+            ![
+              "status",
+              "verandaWidth",
+              "verandaHeight",
+              "dimensions",
+              "kontiWidth",
+              "kontiHeight",
+            ].includes(categoryName)
         )
         .sort(([a], [b]) => sortCategories(a, b))
         .map(([categoryName, categoryProducts]) => {

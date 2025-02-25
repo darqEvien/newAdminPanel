@@ -8,36 +8,17 @@ import BonusItems from "./BonusItems";
 import OrderSummary from "./OrderSummary";
 import CustomerInfo from "./CustomerInfo";
 import PropTypes from "prop-types";
-const OrderEditModal = ({
-  isOpen,
-  onClose,
-  customer,
-  orderKey,
-  orderData,
-  initialDimensions,
-}) => {
+const OrderEditModal = ({ isOpen, onClose, customer, orderKey, orderData }) => {
   // Ana state'ler
   const [categories, setCategories] = useState({});
   const [products, setProducts] = useState({});
   const [localOrderData, setLocalOrderData] = useState(orderData);
   const [dimensions, setDimensions] = useState({
-    kontiWidth: Number(
-      initialDimensions?.kontiWidth || orderData?.dimensions?.kontiWidth || 0
-    ),
-    kontiHeight: Number(
-      initialDimensions?.kontiHeight || orderData?.dimensions?.kontiHeight || 0
-    ),
-    verandaWidth:
-      initialDimensions?.verandaWidth ||
-      orderData?.dimensions?.verandaWidth ||
-      "Seçilmedi",
-    verandaHeight:
-      initialDimensions?.verandaHeight ||
-      orderData?.dimensions?.verandaHeight ||
-      "Seçilmedi",
-    length: Number(
-      initialDimensions?.length || orderData?.dimensions?.length || 0
-    ),
+    kontiWidth: Number(orderData?.dimensions?.kontiWidth || 0),
+    kontiHeight: Number(orderData?.dimensions?.kontiHeight || 0),
+    verandaWidth: orderData?.dimensions?.verandaWidth || "Seçilmedi",
+    verandaHeight: orderData?.dimensions?.verandaHeight || "Seçilmedi",
+    length: Number(orderData?.dimensions?.length || 0),
   });
   // Sol taraf için state'ler (OrderDetails)
   const [editingItem, setEditingItem] = useState(null);
