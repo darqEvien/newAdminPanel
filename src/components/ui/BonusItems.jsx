@@ -1,5 +1,5 @@
-import { useState, useCallback } from 'react';
-import PropTypes from 'prop-types';
+import { useState, useCallback } from "react";
+import PropTypes from "prop-types";
 
 const BonusItems = ({
   savedItems,
@@ -8,49 +8,54 @@ const BonusItems = ({
   products,
   setSavedItems,
   setNewItems,
-  localOrderData
+  localOrderData,
 }) => {
   const [editingItem, setEditingItem] = useState(null);
   const [editingNewItem, setEditingNewItem] = useState(null);
   const [editingValues, setEditingValues] = useState({
-    category: '',
-    product: '',
-    price: '',
+    category: "",
+    product: "",
+    price: "",
     isCustomCategory: false,
     isCustomProduct: false,
-    productId: null
+    productId: null,
   });
 
   const hasKontiInOrder = useCallback(() => {
-    return Object.entries(localOrderData)
-      .some(([category, products]) => 
-        category.toLowerCase() === 'konti' && 
-        Object.values(products).length > 0
-      );
+    return Object.entries(localOrderData).some(
+      ([category, products]) =>
+        category.toLowerCase() === "konti" && Object.values(products).length > 0
+    );
   }, [localOrderData]);
 
-  const handleDelete = useCallback((index) => {
-    setSavedItems(prev => prev.filter((_, idx) => idx !== index));
-  }, [setSavedItems]);
+  const handleDelete = useCallback(
+    (index) => {
+      setSavedItems((prev) => prev.filter((_, idx) => idx !== index));
+    },
+    [setSavedItems]
+  );
 
-  const handleEdit = useCallback((index) => {
-    const item = savedItems[index];
-    setEditingItem(index);
-    setEditingValues({
-      category: item.category,
-      product: item.product,
-      price: item.price,
-      isCustomCategory: item.isCustomCategory,
-      isCustomProduct: item.isCustomProduct,
-      productId: item.productId
-    });
-  }, [savedItems]);
+  const handleEdit = useCallback(
+    (index) => {
+      const item = savedItems[index];
+      setEditingItem(index);
+      setEditingValues({
+        category: item.category,
+        product: item.product,
+        price: item.price,
+        isCustomCategory: item.isCustomCategory,
+        isCustomProduct: item.isCustomProduct,
+        productId: item.productId,
+      });
+    },
+    [savedItems]
+  );
 
   const handleStartPriceEdit = useCallback((index, item) => {
     setEditingItem(index);
     setEditingValues({
       ...item,
-      price: item.price.toString()
+      price: item.price.toString(),
     });
   }, []);
 
@@ -59,82 +64,95 @@ const BonusItems = ({
     setEditingNewItem(index);
     setEditingValues({
       ...item,
-      price: item.price.toString()
+      price: item.price.toString(),
     });
   }, []);
-  
+
   const handlePriceChange = useCallback((e) => {
-    setEditingValues(prev => ({
+    setEditingValues((prev) => ({
       ...prev,
-      price: e.target.value
+      price: e.target.value,
     }));
   }, []);
 
   // Yeni ürün fiyat değişikliği
-  const handleNewItemPriceChange = useCallback((index, value) => {
-    setNewItems(prev => {
-      const updated = [...prev];
-      updated[index] = {
-        ...updated[index],
-        price: value
-      };
-      return updated;
-    });
-  }, [setNewItems]);
-  
-  const handleEditSave = useCallback((index) => {
-    setSavedItems(prev => {
-      const updated = [...prev];
-      updated[index] = {
-        ...prev[index],
-        price: editingValues.price
-      };
-      return updated;
-    });
-    setEditingItem(null);
-  }, [setSavedItems, editingValues]);
+  const handleNewItemPriceChange = useCallback(
+    (index, value) => {
+      setNewItems((prev) => {
+        const updated = [...prev];
+        updated[index] = {
+          ...updated[index],
+          price: value,
+        };
+        return updated;
+      });
+    },
+    [setNewItems]
+  );
+
+  const handleEditSave = useCallback(
+    (index) => {
+      setSavedItems((prev) => {
+        const updated = [...prev];
+        updated[index] = {
+          ...prev[index],
+          price: editingValues.price,
+        };
+        return updated;
+      });
+      setEditingItem(null);
+    },
+    [setSavedItems, editingValues]
+  );
 
   // Kategorileri sırala
   const sortedCategories = useCallback(() => {
-    return Object.values(categories).sort((a, b) => (a.order || 999) - (b.order || 999));
+    return Object.values(categories).sort(
+      (a, b) => (a.order || 999) - (b.order || 999)
+    );
   }, [categories]);
 
   // Yeni item ekleme
   const handleAddNewItem = () => {
-    setNewItems(prev => [...prev, {
-      category: '',
-      product: '',
-      price: '',
-      isCustomCategory: false,
-      isCustomProduct: false
-    }]);
+    setNewItems((prev) => [
+      ...prev,
+      {
+        category: "",
+        product: "",
+        price: "",
+        isCustomCategory: false,
+        isCustomProduct: false,
+      },
+    ]);
   };
 
-// Add this check in handleCategorySelect
- const handleCategorySelect = (index, value) => {
-    if (value.toLowerCase() === 'konti') {
+  // Add this check in handleCategorySelect
+  const handleCategorySelect = (index, value) => {
+    if (value.toLowerCase() === "konti") {
       if (hasKontiInOrder()) {
-        alert('Bir siparişte sadece 1 adet konti seçilebilir! Lütfen başka bir kategori seçin.');
+        alert(
+          "Bir siparişte sadece 1 adet konti seçilebilir! Lütfen başka bir kategori seçin."
+        );
         return;
       }
     }
 
     const updatedItems = [...newItems];
-    if (value === 'custom') {
+    if (value === "custom") {
       updatedItems[index] = {
         ...updatedItems[index],
         isCustomCategory: true,
-        category: '',
-        product: '',
-        price: ''
+        category: "",
+        product: "",
+        price: "",
       };
     } else {
       updatedItems[index] = {
         ...updatedItems[index],
         isCustomCategory: false,
         category: value,
-        product: '',
-        price: ''
+        product: "",
+        price: "",
       };
     }
     setNewItems(updatedItems);
@@ -144,13 +162,13 @@ const BonusItems = ({
   const handleProductSelect = (index, value) => {
     const updatedItems = [...newItems];
     const item = updatedItems[index];
-  
-    if (value === 'custom') {
+
+    if (value === "custom") {
       updatedItems[index] = {
         ...item,
         isCustomProduct: true,
-        product: '',
-        price: ''
+        product: "",
+        price: "",
       };
     } else {
       const selectedProduct = JSON.parse(value);
@@ -159,7 +177,7 @@ const BonusItems = ({
         isCustomProduct: false,
         product: selectedProduct.name,
         productId: selectedProduct.id,
-        price: selectedProduct.price?.toString() || '0'
+        price: selectedProduct.price?.toString() || "0",
       };
     }
     setNewItems(updatedItems);
@@ -170,7 +188,7 @@ const BonusItems = ({
     const updatedItems = [...newItems];
     updatedItems[index] = {
       ...updatedItems[index],
-      [field]: value
+      [field]: value,
     };
     setNewItems(updatedItems);
   };
@@ -178,8 +196,8 @@ const BonusItems = ({
   // Item'ı kaydet
   const handleSaveItem = (index) => {
     const itemToSave = newItems[index];
-    setSavedItems(prev => [...prev, itemToSave]);
-    
+    setSavedItems((prev) => [...prev, itemToSave]);
+
     // Remove from newItems
     const updatedNewItems = newItems.filter((_, idx) => idx !== index);
     setNewItems(updatedNewItems);
@@ -187,7 +205,7 @@ const BonusItems = ({
 
   // Item'ı sil
   const handleRemoveItem = (index) => {
-    setNewItems(prev => prev.filter((_, idx) => idx !== index));
+    setNewItems((prev) => prev.filter((_, idx) => idx !== index));
   };
 
   return (
@@ -200,12 +218,10 @@ const BonusItems = ({
             <span className="text-gray-400 text-xs">
               {categories[item.category]?.title || item.category}
             </span>
-            
+
             {/* Ürün */}
-            <span className="text-gray-300 text-xs">
-              {item.product}
-            </span>
-            
+            <span className="text-gray-300 text-xs">{item.product}</span>
+
             {/* Fiyat */}
             {editingItem === index ? (
               <input
@@ -213,16 +229,16 @@ const BonusItems = ({
                 value={editingValues.price}
                 onChange={handlePriceChange}
                 onBlur={() => handleEditSave(index)}
-                onKeyDown={(e) => e.key === 'Enter' && handleEditSave(index)}
+                onKeyDown={(e) => e.key === "Enter" && handleEditSave(index)}
                 className="bg-gray-600 text-xs text-gray-200 px-2 py-1.5 rounded outline-none w-full"
                 autoFocus
               />
             ) : (
-              <span 
+              <span
                 className="text-green-400 text-xs cursor-pointer hover:text-green-300"
                 onClick={() => handleStartPriceEdit(index, item)}
               >
-                {Number(item.price).toLocaleString('tr-TR')}₺
+                {Number(item.price).toLocaleString("tr-TR")}₺
               </span>
             )}
 
@@ -232,8 +248,18 @@ const BonusItems = ({
                 onClick={() => handleDelete(index)}
                 className="text-red-400 hover:text-red-300 p-1"
               >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                <svg
+                  className="w-4 h-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                  />
                 </svg>
               </button>
             </div>
@@ -251,7 +277,9 @@ const BonusItems = ({
                 <input
                   type="text"
                   value={item.category}
-                  onChange={(e) => handleCustomInput(index, 'category', e.target.value)}
+                  onChange={(e) =>
+                    handleCustomInput(index, "category", e.target.value)
+                  }
                   placeholder="Kategori Adı"
                   className="bg-gray-600 text-xs text-gray-200 px-2 py-1.5 rounded outline-none w-full"
                 />
@@ -263,7 +291,10 @@ const BonusItems = ({
                 >
                   <option value="">Kategori Seçin</option>
                   {sortedCategories().map((category) => (
-                    <option key={category.propertyName} value={category.propertyName}>
+                    <option
+                      key={category.propertyName}
+                      value={category.propertyName}
+                    >
                       {category.title}
                     </option>
                   ))}
@@ -278,37 +309,45 @@ const BonusItems = ({
                 <input
                   type="text"
                   value={item.product}
-                  onChange={(e) => handleCustomInput(index, 'product', e.target.value)}
+                  onChange={(e) =>
+                    handleCustomInput(index, "product", e.target.value)
+                  }
                   placeholder="Ürün Adı"
                   className="bg-gray-600 text-xs text-gray-200 px-2 py-1.5 rounded outline-none w-full"
                 />
               ) : (
                 <select
-                  value={item.productId ? JSON.stringify({
-                    id: item.productId,
-                    name: item.product,
-                    price: item.price
-                  }) : ""}
+                  value={
+                    item.productId
+                      ? JSON.stringify({
+                          id: item.productId,
+                          name: item.product,
+                          price: item.price,
+                        })
+                      : ""
+                  }
                   onChange={(e) => handleProductSelect(index, e.target.value)}
                   className="bg-gray-600 text-xs text-gray-200 px-2 py-1.5 rounded outline-none w-full"
                 >
                   <option value="">Ürün Seçin</option>
-                  {products[item.category] && 
+                  {products[item.category] &&
                     Object.entries(products[item.category])
-                      .sort(([,a], [,b]) => (a.order || 999) - (b.order || 999))
+                      .sort(
+                        ([, a], [, b]) => (a.order || 999) - (b.order || 999)
+                      )
                       .map(([key, product]) => (
-                        <option 
-                          key={key} 
+                        <option
+                          key={key}
                           value={JSON.stringify({
                             id: key,
                             name: product.title || product.name,
-                            price: product.price
+                            price: product.price,
                           })}
                         >
-                          {product.title || product.name} - {Number(product.price).toLocaleString('tr-TR')}₺
+                          {product.title || product.name} -{" "}
+                          {Number(product.price).toLocaleString("tr-TR")}₺
                         </option>
-                      ))
-                  }
+                      ))}
                   <option value="custom">Diğer</option>
                 </select>
               )}
@@ -319,18 +358,22 @@ const BonusItems = ({
               <input
                 type="number"
                 value={item.price}
-                onChange={(e) => handleNewItemPriceChange(index, e.target.value)}
+                onChange={(e) =>
+                  handleNewItemPriceChange(index, e.target.value)
+                }
                 onBlur={() => setEditingNewItem(null)}
-                onKeyDown={(e) => e.key === 'Enter' && setEditingNewItem(null)}
+                onKeyDown={(e) => e.key === "Enter" && setEditingNewItem(null)}
                 className="bg-gray-600 text-xs text-gray-200 px-2 py-1.5 rounded outline-none w-full"
                 autoFocus
               />
             ) : (
-              <span 
+              <span
                 className="text-green-400 text-xs cursor-pointer hover:text-green-300"
                 onClick={() => handleStartNewItemPriceEdit(index, item)}
               >
-                {item.price ? `${Number(item.price).toLocaleString('tr-TR')}₺` : 'Fiyat girin'}
+                {item.price
+                  ? `${Number(item.price).toLocaleString("tr-TR")}₺`
+                  : "Fiyat girin"}
               </span>
             )}
 
@@ -340,16 +383,36 @@ const BonusItems = ({
                 onClick={() => handleSaveItem(index)}
                 className="text-green-400 hover:text-green-300 p-1"
               >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                <svg
+                  className="w-4 h-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    d="M5 13l4 4L19 7"
+                  />
                 </svg>
               </button>
               <button
                 onClick={() => handleRemoveItem(index)}
                 className="text-red-400 hover:text-red-300 p-1"
               >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                <svg
+                  className="w-4 h-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                  />
                 </svg>
               </button>
             </div>
@@ -362,8 +425,18 @@ const BonusItems = ({
         onClick={handleAddNewItem}
         className="w-full h-8 flex items-center justify-center text-gray-500 hover:text-gray-400"
       >
-        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
+        <svg
+          className="w-5 h-5"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth="2"
+            d="M12 4v16m8-8H4"
+          />
         </svg>
       </button>
     </div>
@@ -371,13 +444,13 @@ const BonusItems = ({
 };
 
 BonusItems.propTypes = {
+  localOrderData: PropTypes.object.isRequired,
   savedItems: PropTypes.array.isRequired,
   newItems: PropTypes.array.isRequired,
   categories: PropTypes.object.isRequired,
   products: PropTypes.object.isRequired,
   setSavedItems: PropTypes.func.isRequired,
   setNewItems: PropTypes.func.isRequired,
-  localOrderData: PropTypes.object.isRequired,
 };
 
 export default BonusItems;

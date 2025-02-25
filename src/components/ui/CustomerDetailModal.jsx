@@ -3,7 +3,7 @@ import PropTypes from "prop-types";
 import { useState, useEffect } from "react";
 import { ref, get, set, update } from "firebase/database";
 import { database } from "../../firebase/firebaseConfig";
-import OrderEditModal from "./OrderEditmodal";
+import OrderEditModal from "./OrderEditModal";
 
 const CustomerDetailModal = ({ isOpen, onClose, customer }) => {
   // const [orders, setOrders] = useState([]);
@@ -822,7 +822,7 @@ const CustomerDetailModal = ({ isOpen, onClose, customer }) => {
           customer={customer}
           orderKey={editingOrder.key}
           orderData={editingOrder.data}
-          dimensions={editingOrder.dimensions}
+          initialDimensions={editingOrder.dimensions}
         />
       )}
     </>

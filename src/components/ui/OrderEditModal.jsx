@@ -8,12 +8,37 @@ import BonusItems from "./BonusItems";
 import OrderSummary from "./OrderSummary";
 import CustomerInfo from "./CustomerInfo";
 import PropTypes from "prop-types";
-const OrderEditModal = ({ isOpen, onClose, customer, orderKey, orderData }) => {
+const OrderEditModal = ({
+  isOpen,
+  onClose,
+  customer,
+  orderKey,
+  orderData,
+  initialDimensions,
+}) => {
   // Ana state'ler
   const [categories, setCategories] = useState({});
   const [products, setProducts] = useState({});
   const [localOrderData, setLocalOrderData] = useState(orderData);
-
+  const [dimensions, setDimensions] = useState({
+    kontiWidth: Number(
+      initialDimensions?.kontiWidth || orderData?.dimensions?.kontiWidth || 0
+    ),
+    kontiHeight: Number(
+      initialDimensions?.kontiHeight || orderData?.dimensions?.kontiHeight || 0
+    ),
+    verandaWidth:
+      initialDimensions?.verandaWidth ||
+      orderData?.dimensions?.verandaWidth ||
+      "Seçilmedi",
+    verandaHeight:
+      initialDimensions?.verandaHeight ||
+      orderData?.dimensions?.verandaHeight ||
+      "Seçilmedi",
+    length: Number(
+      initialDimensions?.length || orderData?.dimensions?.length || 0
+    ),
+  });
   // Sol taraf için state'ler (OrderDetails)
   const [editingItem, setEditingItem] = useState(null);
   const [editingValues, setEditingValues] = useState({ name: "", price: "" });
@@ -31,14 +56,6 @@ const OrderEditModal = ({ isOpen, onClose, customer, orderKey, orderData }) => {
   const [newItems, setNewItems] = useState([
     { category: "", product: "", price: "" },
   ]);
-  const [dimensions, setDimensions] = useState({
-    kontiWidth: dimensions?.kontiWidth || 0,
-    kontiHeight: dimensions?.kontiHeight || 0,
-    verandaWidth: dimensions?.verandaWidth || "Seçilmedi",
-    verandaHeight: dimensions?.verandaHeight || "Seçilmedi",
-    length: dimensions?.length || 0,
-  });
-
   // Initial data fetch
   useEffect(() => {
     const fetchInitialData = async () => {
@@ -153,6 +170,7 @@ const OrderEditModal = ({ isOpen, onClose, customer, orderKey, orderData }) => {
               </div>
               <div className="flex-1 overflow-y-auto p-4">
                 <BonusItems
+                  localOrderData={localOrderData} // Add this line
                   savedItems={savedItems}
                   newItems={newItems}
                   categories={categories}
@@ -209,6 +227,13 @@ OrderEditModal.propTypes = {
       })
     ),
   }).isRequired,
+  initialDimensions: PropTypes.shape({
+    kontiWidth: PropTypes.number,
+    kontiHeight: PropTypes.number,
+    verandaWidth: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
+    verandaHeight: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
+    length: PropTypes.number,
+  }),
 };
 
 export default OrderEditModal;
