@@ -13,6 +13,9 @@ export const calculatePrice = ({
   let newWidth = 0;
   let newHeight = 0;
   let newArea = 0;
+  let artisArea = 0;
+  let kontiTotalArea = 0;
+  let ratio = 0;
 
   switch (priceFormat) {
     case "tekil":
@@ -27,6 +30,7 @@ export const calculatePrice = ({
       return perimeter * Number(basePrice);
 
     case "artis":
+      
       // Konti alanı
       kontiArea = kontiWidth * kontiHeight;
       newWidth = Number(kontiWidth) + Number(width);

@@ -35,21 +35,7 @@ const BonusItems = ({
     [setSavedItems]
   );
 
-  const handleEdit = useCallback(
-    (index) => {
-      const item = savedItems[index];
-      setEditingItem(index);
-      setEditingValues({
-        category: item.category,
-        product: item.product,
-        price: item.price,
-        isCustomCategory: item.isCustomCategory,
-        isCustomProduct: item.isCustomProduct,
-        productId: item.productId,
-      });
-    },
-    [savedItems]
-  );
+
 
   const handleStartPriceEdit = useCallback((index, item) => {
     setEditingItem(index);

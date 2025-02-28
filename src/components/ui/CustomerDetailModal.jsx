@@ -5,6 +5,30 @@ import { ref, get, set, update } from "firebase/database";
 import { database } from "../../firebase/firebaseConfig";
 import OrderEditModal from "./OrderEditModal";
 
+const ensureNotesArray = (notes) => {
+  if (!notes) return [];
+
+  // If notes is already an array
+  if (Array.isArray(notes)) return notes;
+
+  // If notes is a string, convert to array format with a single entry
+  if (typeof notes === "string") {
+    return [
+      {
+        content: notes,
+        date: new Date().toISOString(),
+      },
+    ];
+  }
+
+  // If it's an object but not an array (like from Firebase)
+  if (typeof notes === "object") {
+    return Object.values(notes);
+  }
+
+  return [];
+};
+
 const CustomerDetailModal = ({ isOpen, onClose, customer }) => {
   // const [orders, setOrders] = useState([]);
   const [kontiImages, setKontiImages] = useState({});
@@ -85,11 +109,24 @@ const CustomerDetailModal = ({ isOpen, onClose, customer }) => {
     }
   };
   // Edit butonunun onClick fonksiyonunu güncelleyelim
-  const handleEditOrder = (orderKey, orderData, dimensions) => {
+  const handleEditOrder = (
+    orderKey,
+    orderData,
+    dimensions,
+    sourceCustomer = null,
+    orderType = "main" // Add this parameter
+  ) => {
     setEditingOrder({
       key: orderKey,
       data: orderData,
-      dimensions: dimensions || customer.dimensions, // Ana sipariş veya other orders için dimensions
+      dimensions: dimensions || customer.dimensions,
+      // sourceCustomer varsa onu kullan, yoksa ana müşteri bilgilerini kullan
+      sourceCustomer: sourceCustomer || {
+        fullName: customer.fullName,
+        email: customer.email,
+        phone: customer.phone,
+      },
+      type: orderType, // Add this property
     });
   };
   // Add toggle function for note dates
@@ -102,10 +139,13 @@ const CustomerDetailModal = ({ isOpen, onClose, customer }) => {
 
   // Group notes by date
   const groupNotesByDate = (notes) => {
-    if (!notes) return {};
+    const safeNotes = ensureNotesArray(notes);
 
-    return notes.reduce((groups, note) => {
-      const date = new Date(note.date);
+    if (!safeNotes.length) return {};
+
+    return safeNotes.reduce((groups, note) => {
+      // Make sure note has a valid date
+      const date = note.date ? new Date(note.date) : new Date();
       const dateKey = date.toLocaleDateString("tr-TR");
 
       if (!groups[dateKey]) {
@@ -124,85 +164,31 @@ const CustomerDetailModal = ({ isOpen, onClose, customer }) => {
     }, {});
   };
 
-  // Handle note add
-  const handleAddNote = async () => {
-    if (!newNote.trim()) return;
-
-    setNotesLoading(true);
-    try {
-      const noteRef = ref(database, `customers/${customer.id}/notes`);
-      const newNoteData = {
-        content: newNote.trim(),
-        date: new Date().toISOString(),
-      };
-
-      // Get existing notes or empty array
-      const snapshot = await get(noteRef);
-      const existingNotes = snapshot.exists() ? snapshot.val() : [];
-
-      // Add new note and update Firebase
-      await set(noteRef, [...existingNotes, newNoteData]);
-
-      setNewNote("");
-      setIsAddingNote(false);
-    } catch (error) {
-      console.error("Error adding note:", error);
-    } finally {
-      setNotesLoading(false);
-    }
-  };
-
-  // Handle note delete
-  const handleDeleteNote = async (dateKey, noteIndex) => {
-    try {
-      const noteRef = ref(database, `customers/${customer.id}/notes`);
-      const snapshot = await get(noteRef);
-      if (snapshot.exists()) {
-        const notes = snapshot.val();
-
-        // Silinecek notun tam indeksini bulmak için gruplanmış notları kontrol edelim
-        const groupedNotes = groupNotesByDate(notes);
-        // let notesToDelete = groupedNotes[dateKey];
-        let actualIndex = -1;
-
-        // Tüm notları tarayan bir sayaç
-        let counter = 0;
-        for (const date of Object.keys(groupedNotes)) {
-          for (let i = 0; i < groupedNotes[date].length; i++) {
-            if (date === dateKey && i === noteIndex) {
-              actualIndex = counter;
-              break;
-            }
-            counter++;
-          }
-          if (actualIndex !== -1) break;
-        }
-
-        // Doğru notu sil
-        if (actualIndex !== -1) {
-          const updatedNotes = notes.filter(
-            (_, index) => index !== actualIndex
-          );
-          await set(noteRef, updatedNotes);
-        }
-      }
-    } catch (error) {
-      console.error("Error deleting note:", error);
-    }
-  };
-
   // Update the notes section JSX
   const renderNotes = () => {
+    // Only proceed if we actually have notes
+    if (!customer.notes) {
+      return <p className="text-gray-500">Not bulunmamaktadır.</p>;
+    }
+
     const groupedNotes = groupNotesByDate(customer.notes);
+
+    // If we ended up with no grouped notes, show no notes message
+    if (Object.keys(groupedNotes).length === 0) {
+      return <p className="text-gray-500">Not bulunmamaktadır.</p>;
+    }
+
     const sortedDates = Object.keys(groupedNotes).sort(
       (a, b) =>
         new Date(b.split(".").reverse().join("-")) -
         new Date(a.split(".").reverse().join("-"))
     );
 
+    // Rest of the function remains the same
     return (
       <div className="space-y-3">
         {sortedDates.map((date) => (
+          // Existing JSX
           <div
             key={date}
             className="border border-gray-700 rounded-lg overflow-hidden"
@@ -279,7 +265,74 @@ const CustomerDetailModal = ({ isOpen, onClose, customer }) => {
       </div>
     );
   };
+  const handleDeleteNote = async (dateKey, noteIndex) => {
+    try {
+      const noteRef = ref(database, `customers/${customer.id}/notes`);
+      const snapshot = await get(noteRef);
 
+      if (snapshot.exists()) {
+        const notesData = snapshot.val();
+
+        // Convert notes to array format if needed
+        const notes = ensureNotesArray(notesData);
+
+        // Rest of the function remains the same
+        const groupedNotes = groupNotesByDate(notes);
+        let actualIndex = -1;
+        let counter = 0;
+
+        for (const date of Object.keys(groupedNotes)) {
+          for (let i = 0; i < groupedNotes[date].length; i++) {
+            if (date === dateKey && i === noteIndex) {
+              actualIndex = counter;
+              break;
+            }
+            counter++;
+          }
+          if (actualIndex !== -1) break;
+        }
+
+        if (actualIndex !== -1) {
+          const updatedNotes = notes.filter(
+            (_, index) => index !== actualIndex
+          );
+          await set(noteRef, updatedNotes);
+        }
+      }
+    } catch (error) {
+      console.error("Error deleting note:", error);
+    }
+  };
+  const handleAddNote = async () => {
+    if (!newNote.trim()) return;
+
+    setNotesLoading(true);
+    try {
+      const noteRef = ref(database, `customers/${customer.id}/notes`);
+      const newNoteData = {
+        content: newNote.trim(),
+        date: new Date().toISOString(),
+      };
+
+      // Get existing notes or empty array
+      const snapshot = await get(noteRef);
+      let existingNotes = [];
+
+      if (snapshot.exists()) {
+        existingNotes = ensureNotesArray(snapshot.val());
+      }
+
+      // Add new note and update Firebase
+      await set(noteRef, [...existingNotes, newNoteData]);
+
+      setNewNote("");
+      setIsAddingNote(false);
+    } catch (error) {
+      console.error("Error adding note:", error);
+    } finally {
+      setNotesLoading(false);
+    }
+  };
   // Add categories fetch
   useEffect(() => {
     const fetchCategories = async () => {
@@ -390,10 +443,20 @@ const CustomerDetailModal = ({ isOpen, onClose, customer }) => {
   }, [isOpen, customer]);
 
   const getProductsLength = () => {
-    if (!customer.products) return 0;
-    return Object.keys(customer.products).length;
-  };
+    let count = 0;
 
+    // Count main products
+    if (customer.products) {
+      count += Object.keys(customer.products).length;
+    }
+
+    // Count other orders
+    if (customer.otherOrders) {
+      count += Object.keys(customer.otherOrders).length;
+    }
+
+    return count;
+  };
   const renderProducts = () => {
     const allOrders = [];
 
@@ -445,10 +508,16 @@ const CustomerDetailModal = ({ isOpen, onClose, customer }) => {
               {order.dimensions?.kontiWidth &&
                 order.dimensions?.kontiHeight && (
                   <span className="bg-gray-700/50 px-2 py-0.5 rounded text-xs text-gray-300">
-                    {" "}
-                    {/* py-1'i py-0.5'e düşürdüm */}
                     {order.dimensions.kontiWidth} x{" "}
                     {order.dimensions.kontiHeight}
+                    <span className="ml-1 text-gray-400">
+                      (
+                      {(
+                        order.dimensions.kontiWidth *
+                        order.dimensions.kontiHeight
+                      ).toFixed(2)}{" "}
+                      m²)
+                    </span>
                   </span>
                 )}
               {order.type === "other" && (
@@ -467,7 +536,9 @@ const CustomerDetailModal = ({ isOpen, onClose, customer }) => {
                     order.data,
                     order.type === "other"
                       ? order.dimensions
-                      : customer.dimensions
+                      : customer.dimensions,
+                    order.type === "other" ? order.sourceCustomer : null,
+                    order.type // Pass the order type
                   )
                 }
                 className="text-gray-400 hover:text-blue-400 p-1"
@@ -819,10 +890,12 @@ const CustomerDetailModal = ({ isOpen, onClose, customer }) => {
         <OrderEditModal
           isOpen={!!editingOrder}
           onClose={() => setEditingOrder(null)}
-          customer={customer}
+          customer={editingOrder.sourceCustomer}
           orderKey={editingOrder.key}
           orderData={editingOrder.data}
           initialDimensions={editingOrder.dimensions}
+          isMainOrder={editingOrder.type !== "other"} // Add this line
+          customerId={customer.id} // Add this line
         />
       )}
     </>

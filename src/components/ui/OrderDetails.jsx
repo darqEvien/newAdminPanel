@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 import PropTypes from "prop-types";
 import { calculatePrice } from "../../utils/priceCalculator";
 const OrderDetails = ({
@@ -15,24 +15,8 @@ const OrderDetails = ({
   dimensions,
   setDimensions,
 }) => {
-  // Initialize konti dimensions from dimensions object
-  // useEffect(() => {
-  //   if (localOrderData.dimensions) {
-  //     setDimensions({
-  //       kontiWidth: Number(localOrderData.dimensions?.kontiWidth) || 0,
-  //       kontiHeight: Number(localOrderData.dimensions?.kontiHeight) || 0,
-  //     });
-  //     console.log(
-  //       "Initial kontiWidth:",
-  //       Number(localOrderData.dimensions?.kontiWidth)
-  //     );
-  //     console.log(
-  //       "Initial kontiHeight:",
-  //       Number(localOrderData.dimensions?.kontiHeight)
-  //     );
-  //   }
-  // }, [localOrderData, setDimensions]);
-
+  const [isUpdating, setIsUpdating] = useState(false);
+  
   // Parse konti dimensions from product name
   const parseKontiDimensions = (name) => {
     const dimensions = name.split("x").map((n) => parseInt(n.trim()));
@@ -63,28 +47,7 @@ const OrderDetails = ({
   }, []);
 
   // Update artis dimensions
-  const updateArtisDimensions = (newProduct, oldProduct = null) => {
-    setLocalOrderData((prev) => {
-      let kontiWidth = parseFloat(prev.kontiWidth) || 0;
-      let kontiHeight = parseFloat(prev.kontiHeight) || 0;
 
-      // Remove old product dimensions if exists
-      if (oldProduct) {
-        kontiWidth -= parseFloat(oldProduct.width) || 0;
-        kontiHeight -= parseFloat(oldProduct.height) || 0;
-      }
-
-      // Add new product dimensions
-      kontiWidth += parseFloat(newProduct.width) || 0;
-      kontiHeight += parseFloat(newProduct.height) || 0;
-
-      return {
-        ...prev,
-        kontiWidth,
-        kontiHeight,
-      };
-    });
-  };
 
   // Ürün düzenleme modunu aç
   const handleEdit = useCallback(
@@ -107,184 +70,213 @@ const OrderDetails = ({
   );
 
   // Handle custom konti name input
-  const handleKontiNameChange = (value) => {
-    const [width, height] = parseKontiDimensions(value);
-    setEditingValues((prev) => ({
-      ...prev,
-      name: value,
-    }));
-    setLocalOrderData((prev) => ({
-      ...prev,
-      kontiWidth: width,
-      kontiHeight: height,
-    }));
-  };
 
   // Ürün seçimi
   const handleProductSelect = useCallback(
     (value, categoryName, productIndex) => {
       try {
+        // Input validation
+        if (!value || !categoryName || productIndex === undefined) {
+          console.error("Geçersiz giriş değerleri:", { value, categoryName, productIndex });
+          return;
+        }
+  
         const selectedProduct = JSON.parse(value);
         const category = Object.values(categories).find(
-          (cat) =>
-            cat.propertyName?.toLowerCase() === categoryName.toLowerCase()
+          (cat) => cat.propertyName?.toLowerCase() === categoryName.toLowerCase()
         );
-
+  
+        if (!category) {
+          console.error("Kategori bulunamadı:", categoryName);
+          return;
+        }
+  
         const productData = products[categoryName]?.[selectedProduct.id];
         const basePrice = selectedProduct.price;
-
-        // Konti kategori işlemleri
+  
+        // KONTİ KATEGORİSİ İŞLEMLERİ
         if (category?.priceFormat === "konti") {
-          console.log("Konti Ürün Seçildi:", {
-            ürün: selectedProduct.name,
-            yeniKontiWidth: productData?.width || 0,
-            yeniKontiHeight: productData?.height || 0,
-          });
-          // Konti ürünü değiştiğinde artis ürünlerini temizle
-          setLocalOrderData((prev) => {
-            const newData = { ...prev };
-            // Artis kategorisindeki ürünleri temizle
-            Object.entries(prev).forEach(([key, categoryData]) => {
-              // En veya boy içeren kategori adlarını kontrol et
-              if (
-                key.toLowerCase().includes("en") ||
-                key.toLowerCase().includes("boy")
-              ) {
-                // Bu kategorideki ürünleri "İstemiyorum" yap
-                newData[key] = {
-                  0: {
-                    name: "İstemiyorum",
-                    price: 0,
-                    productCollectionId: "istemiyorum",
-                    width: 0,
-                    height: 0,
-                  },
-                };
-              }
-            });
-            // Konti boyutlarını güncelle
-            return {
-              ...newData,
-              dimensions: {
-                ...prev.dimensions,
-                kontiWidth: productData?.width || 0,
-                kontiHeight: productData?.height || 0,
-              },
-              [categoryName]: {
-                ...prev[categoryName],
-                [productIndex]: {
-                  name: selectedProduct.name,
-                  price: Number(basePrice),
-                  productCollectionId: selectedProduct.id,
-                  width: productData?.width || 0,
-                  height: productData?.height || 0,
+          // Boyutları hazırla
+          const kontiWidth = Number(productData?.width) || 0;
+          const kontiHeight = Number(productData?.height) || 0;
+  
+          // State güncellemelerini toplu yap
+          const updates = async () => {
+            // 1. LocalOrderData güncelleme
+            await setLocalOrderData(prev => {
+              const newData = { ...prev };
+              
+              // Artis kategorilerini temizle
+              Object.entries(prev).forEach(([key, _]) => {
+                if (key.toLowerCase().includes("en") || key.toLowerCase().includes("boy")) {
+                  newData[key] = {
+                    0: {
+                      name: "İstemiyorum",
+                      price: 0,
+                      productCollectionId: "istemiyorum",
+                      width: 0,
+                      height: 0,
+                    },
+                  };
+                }
+              });
+  
+              return {
+                ...newData,
+                dimensions: {
+                  ...prev.dimensions,
+                  kontiWidth,
+                  kontiHeight,
                 },
-              },
-            };
-          });
-
-          setDimensions((prev) => ({
-            ...prev,
-            kontiWidth: productData?.width || 0,
-            kontiHeight: productData?.height || 0,
-          }));
-          setEditingValues({
-            name: selectedProduct.name,
-            price: selectedProduct.price.toString(),
-          });
+                [categoryName]: {
+                  ...prev[categoryName],
+                  [productIndex]: {
+                    name: selectedProduct.name,
+                    price: Number(basePrice),
+                    productCollectionId: selectedProduct.id,
+                    width: kontiWidth,
+                    height: kontiHeight,
+                  },
+                },
+              };
+            });
+  
+            // 2. Dimensions güncelleme
+            await setDimensions(prev => ({
+              ...prev,
+              kontiWidth,
+              kontiHeight,
+            }));
+  
+            // 3. Editing values güncelleme
+            setEditingValues({
+              name: selectedProduct.name,
+              price: basePrice.toString(),
+            });
+          };
+  
+          updates();
         }
-
-        // Artis kategori işlemleri
+  
+        // ARTİS KATEGORİSİ İŞLEMLERİ
         if (category?.priceFormat === "artis") {
           const currentProduct = localOrderData[categoryName]?.[productIndex];
-
-          // Mevcut konti boyutlarını al
-          const currentKontiWidth = Number(dimensions.kontiWidth) || 0;
-          const currentKontiHeight = Number(dimensions.kontiHeight) || 0;
-
-          // Eski ürün boyutlarını çıkar (varsa)
+  
+          // Boyutları hesapla
           const oldWidth = Number(currentProduct?.width || 0);
           const oldHeight = Number(currentProduct?.height || 0);
-
-          // Önce eski ürünü çıkar
-          const afterRemovalWidth = currentKontiWidth - oldWidth;
-          const afterRemovalHeight = currentKontiHeight - oldHeight;
-
-          // Yeni ürün boyutlarını al
           const newWidth = Number(productData?.width || 0);
           const newHeight = Number(productData?.height || 0);
-
-          // Sonra yeni ürünü ekle
-          const updatedKontiWidth = afterRemovalWidth + newWidth;
-          const updatedKontiHeight = afterRemovalHeight + newHeight;
-
-          console.log("Artis Ürün Değişikliği:", {
-            ürün: selectedProduct.name,
-            eskiÜrün: currentProduct?.name,
-            boyutlar: {
-              başlangıç: `${currentKontiWidth}x${currentKontiHeight}`,
-              eskiÜrünSilinmiş: `${afterRemovalWidth}x${afterRemovalHeight}`,
-              yeniÜrünEklenmiş: `${updatedKontiWidth}x${updatedKontiHeight}`,
-              değişim: {
-                çıkarılan: `${oldWidth}x${oldHeight}`,
-                eklenen: `${newWidth}x${newHeight}`,
-              },
-            },
-          });
-
-          // Önce dimensions'ı güncelle
-          setDimensions((prev) => ({
-            ...prev,
-            kontiWidth: updatedKontiWidth,
-            kontiHeight: updatedKontiHeight,
-          }));
-
-          // Fiyat hesaplama için artan alanı kullan
+          
+          const currentKontiWidth = Number(dimensions.kontiWidth) || 0;
+          const currentKontiHeight = Number(dimensions.kontiHeight) || 0;
+        
+          // Yeni konti boyutları
+          const updatedKontiWidth = currentKontiWidth - oldWidth + newWidth;
+          const updatedKontiHeight = currentKontiHeight - oldHeight + newHeight;
+        
+          // Fiyat hesaplama - kenar uzunluğuna göre
           const calcPrice = calculatePrice({
             priceFormat: "artis",
             basePrice: Number(selectedProduct.price),
             width: newWidth,
             height: newHeight,
-            kontiWidth: afterRemovalWidth, // Eski ürün çıkarıldıktan sonraki genişlik
-            kontiHeight: afterRemovalHeight, // Eski ürün çıkarıldıktan sonraki yükseklik
-            newKontiWidth: updatedKontiWidth, // Yeni ürün eklendikten sonraki genişlik
-            newKontiHeight: updatedKontiHeight, // Yeni ürün eklendikten sonraki yükseklik
+            kontiWidth: currentKontiWidth, // Mevcut konti boyutlarını kullan
+            kontiHeight: currentKontiHeight // Mevcut konti boyutlarını kullan
           });
-
-          setEditingValues({
-            name: selectedProduct.name,
-            price: calcPrice.toString(),
+        
+          console.log("Artis Hesaplama:", {
+            kategori: categoryName,
+            ürün: selectedProduct.name,
+            eskiBoyutlar: `${currentKontiWidth}x${currentKontiHeight}`,
+            yeniBoyutlar: `${updatedKontiWidth}x${updatedKontiHeight}`,
+            kenarUzunluğu: newWidth || newHeight,
+            fiyat: calcPrice
           });
-
-          // LocalOrderData güncelleme
-          setLocalOrderData((prev) => ({
-            ...prev,
-            dimensions: {
-              ...prev.dimensions,
+  
+          // State güncellemelerini toplu yap
+          const updates = async () => {
+            // 1. Dimensions güncelleme
+            await setDimensions(prev => ({
+              ...prev,
               kontiWidth: updatedKontiWidth,
               kontiHeight: updatedKontiHeight,
-            },
-            [categoryName]: {
-              ...prev[categoryName],
-              [productIndex]: {
-                name: selectedProduct.name,
-                price: calcPrice,
-                productCollectionId: selectedProduct.id,
-                width: newWidth,
-                height: newHeight,
+            }));
+  
+            // 2. LocalOrderData güncelleme
+            await setLocalOrderData(prev => ({
+              ...prev,
+              dimensions: {
+                ...prev.dimensions,
+                kontiWidth: updatedKontiWidth,
+                kontiHeight: updatedKontiHeight,
               },
-            },
-          }));
+              [categoryName]: {
+                ...prev[categoryName],
+                [productIndex]: {
+                  name: selectedProduct.name,
+                  price: calcPrice,
+                  productCollectionId: selectedProduct.id,
+                  width: newWidth,
+                  height: newHeight,
+                },
+              },
+            }));
+  
+            // 3. Editing values güncelleme
+            setEditingValues({
+              name: selectedProduct.name,
+              price: calcPrice.toString(),
+            });
+          };
+  
+          updates();
         }
-
+  
+        // Her durumda selectedProduct'ı güncelle
         setSelectedProduct(selectedProduct);
+  
       } catch (error) {
         console.error("Ürün seçimi hatası:", error);
       }
     },
-    [categories, products, dimensions, setDimensions, setLocalOrderData]
+    [categories, products, dimensions, localOrderData, setDimensions, setLocalOrderData, setEditingValues, setSelectedProduct]
   );
-
+  
+  useEffect(() => {
+    if (!categories || !products || !localOrderData || isUpdating) return;
+  
+    // Önce konti ürünlerini işle
+    const processKontiProducts = () => {
+      Object.entries(localOrderData).forEach(([categoryName, categoryProducts]) => {
+        const category = Object.values(categories).find(
+          (cat) => cat.propertyName?.toLowerCase() === categoryName.toLowerCase()
+        );
+  
+        if (category?.priceFormat === "konti") {
+          Object.entries(categoryProducts).forEach(([productIndex, product]) => {
+            if (product.productCollectionId && product.productCollectionId !== "istemiyorum") {
+              const simulatedProduct = {
+                id: product.productCollectionId,
+                name: product.name,
+                price: product.price,
+                custom: false
+              };
+              handleProductSelect(JSON.stringify(simulatedProduct), categoryName, productIndex);
+            }
+          });
+        }
+      });
+    };
+  
+    // İlk yükleme için bir kere çalıştır
+    const initialized = sessionStorage.getItem('productsInitialized');
+    if (!initialized) {
+      processKontiProducts();
+      sessionStorage.setItem('productsInitialized', 'true');
+    }
+  
+  }, [categories, products, localOrderData, handleProductSelect, isUpdating]);
   // Değişiklikleri kaydet
   const handleSave = useCallback(
     (categoryName, productIndex) => {
@@ -408,7 +400,7 @@ const OrderDetails = ({
                             {products[categoryName] &&
                               sortProducts(products[categoryName])
                                 .filter(
-                                  ([key, _]) => key !== selectedProduct?.id
+                                  ([key, ]) => key !== selectedProduct?.id
                                 ) // Seçili ürünü filtrele
                                 .map(([key, product]) => (
                                   <option
