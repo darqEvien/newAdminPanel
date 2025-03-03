@@ -80,7 +80,30 @@ const OrderEditModal = ({
 
     fetchInitialData();
   }, []);
+  useEffect(() => {
+    if (isOpen && initialDimensions) {
+      const dimensionsToSet = {
+        kontiWidth: Number(initialDimensions?.kontiWidth || 0),
+        kontiHeight: Number(initialDimensions?.kontiHeight || 0),
+        anaWidth: Number(initialDimensions?.anaWidth || 0),
+        anaHeight: Number(initialDimensions?.anaHeight || 0),
+        verandaWidth: initialDimensions?.verandaWidth || "Seçilmedi",
+        verandaHeight: initialDimensions?.verandaHeight || "Seçilmedi",
+        length: Number(initialDimensions?.length || 0),
+      };
 
+      // Log what we're setting for debugging
+      console.log("📊 Modal açıldı, boyutlar ayarlanıyor:", dimensionsToSet);
+
+      setDimensions(dimensionsToSet);
+
+      // Also make sure localOrderData has dimensions
+      setLocalOrderData((prev) => ({
+        ...prev,
+        dimensions: dimensionsToSet,
+      }));
+    }
+  }, [isOpen, initialDimensions, setLocalOrderData]);
   // Ana kaydetme fonksiyonu
   const handleSaveChanges = async () => {
     try {

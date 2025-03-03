@@ -7,6 +7,7 @@ export const calculatePrice = ({
   kontiHeight = 0,
   anaWidth = 0,
   anaHeight = 0,
+  categoryName = "",
 }) => {
   // Move all declarations outside switch
   let area = 0;
@@ -32,14 +33,20 @@ export const calculatePrice = ({
       return perimeter * Number(basePrice);
 
     case "artis":
-      // Konti alanı
-      kontiArea = kontiWidth * kontiHeight;
-      newWidth = Number(kontiWidth) + Number(width);
-      newHeight = Number(kontiHeight) + Number(height);
-      newArea = newWidth * newHeight;
-      console.log("Yeni Fiyat:", (newArea - kontiArea) * Number(basePrice));
-      return (newArea - kontiArea) * Number(basePrice);
-
+      if (categoryName && categoryName.includes("en")) {
+        // Width change calculation - use current kontiHeight
+        return Number(width) * Number(kontiHeight) * Number(basePrice);
+      } else if (categoryName && categoryName.includes("boy")) {
+        // Height change calculation - use current kontiWidth
+        return Number(height) * Number(kontiWidth) * Number(basePrice);
+      } else {
+        // Standard calculation (area difference)
+        kontiArea = kontiWidth * kontiHeight;
+        newWidth = Number(kontiWidth) + Number(width);
+        newHeight = Number(kontiHeight) + Number(height);
+        newArea = newWidth * newHeight;
+        return (newArea - kontiArea) * Number(basePrice);
+      }
     case "tasDuvar":
       return Number(basePrice);
 
