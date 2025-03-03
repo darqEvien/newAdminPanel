@@ -2,12 +2,14 @@ import { useState, useEffect } from "react";
 import { Dialog, DialogContent } from "./dialogForCustomers";
 import { ref, get, set } from "firebase/database";
 import { database } from "../../firebase/firebaseConfig";
+import { toast } from "react-toastify";
 import OrderDetails from "./OrderDetails";
 import BonusItems from "./BonusItems";
 import OrderNotes from "./OrderNotes";
 import OrderSummary from "./OrderSummary";
 import CustomerInfo from "./CustomerInfo";
 import PropTypes from "prop-types";
+import { calculatePrice } from "../../utils/priceCalculator";
 const OrderEditModal = ({
   isOpen,
   onClose,
@@ -25,6 +27,8 @@ const OrderEditModal = ({
   const [dimensions, setDimensions] = useState({
     kontiWidth: Number(initialDimensions?.kontiWidth || 0),
     kontiHeight: Number(initialDimensions?.kontiHeight || 0),
+    anaWidth: Number(initialDimensions?.anaWidth || 0),
+    anaHeight: Number(initialDimensions?.anaHeight || 0),
     verandaWidth: initialDimensions?.verandaWidth || "Seçilmedi",
     verandaHeight: initialDimensions?.verandaHeight || "Seçilmedi",
     length: Number(initialDimensions?.length || 0),
@@ -41,7 +45,7 @@ const OrderEditModal = ({
   const [editingItem, setEditingItem] = useState(null);
   const [editingValues, setEditingValues] = useState({ name: "", price: "" });
   const [selectedProduct, setSelectedProduct] = useState(null);
-  const [notes, setNotes] = useState(orderData.notes || ""); // Add notes state
+  const [notes] = useState(orderData.notes || ""); // Add notes state
   // Sağ taraf için state'ler (BonusItems)
   const [savedItems, setSavedItems] = useState([]);
   const [editingSavedItem, setEditingSavedItem] = useState(null);
@@ -88,6 +92,326 @@ const OrderEditModal = ({
       onClose();
     } catch (error) {
       console.error("Error saving changes:", error);
+    }
+  };
+  // Fiyatları yenileme fonksiyonu
+
+  // Fiyatları yenileme fonksiyonu
+  // Fiyatları yenileme fonksiyonu
+  const handleRefreshPrices = async () => {
+    try {
+      // İşlem başladığını kullanıcıya bildir
+      const loadingToast = toast.loading("Fiyatlar güncelleniyor...");
+
+      // Kategorileri veritabanından yeniden alalım ve güncelleyelim
+      const categoriesSnapshot = await get(ref(database, "categories"));
+      if (!categoriesSnapshot.exists()) {
+        console.error("Kategoriler veritabanında bulunamadı!");
+        toast.error("Kategori bilgileri yüklenemedi!");
+        return;
+      }
+
+      const updatedCategories = categoriesSnapshot.val();
+      setCategories(updatedCategories);
+
+      // Ana ürünlerin fiyatlarını güncelle
+      const updatedOrderData = { ...localOrderData };
+
+      // PropertyName'e göre kategori bulma fonksiyonu
+      const findCategoryByPropertyName = (propName) => {
+        for (const [, category] of Object.entries(updatedCategories)) {
+          if (category.propertyName === propName) {
+            return category;
+          }
+        }
+        return null;
+      };
+
+      // Ana kategorileri işlemek için Promise dizisi
+      const categoryPromises = Object.entries(updatedOrderData).map(
+        ([categoryName, categoryProducts], categoryIndex) =>
+          new Promise((resolve) => {
+            // Her kategori işlemesi arasında 0.5ms gecikme ekle
+            setTimeout(async () => {
+              try {
+                // Sadece object olan ve özel alanlar olmayan kategorileri işle
+                if (
+                  typeof categoryProducts !== "object" ||
+                  [
+                    "status",
+                    "verandaWidth",
+                    "verandaHeight",
+                    "dimensions",
+                    "kontiWidth",
+                    "kontiHeight",
+                    "notes",
+                  ].includes(categoryName)
+                ) {
+                  resolve();
+                  return;
+                }
+
+                // Kategorinin priceFormat değerini bul
+                let categoryPriceFormat = "tekil"; // Varsayılan değer
+                const matchingCategory =
+                  findCategoryByPropertyName(categoryName);
+
+                if (matchingCategory && matchingCategory.priceFormat) {
+                  categoryPriceFormat = matchingCategory.priceFormat;
+                  console.log(
+                    `✓ Kategori ${categoryName} için priceFormat: ${categoryPriceFormat}`
+                  );
+                } else if (
+                  updatedCategories[categoryName] &&
+                  updatedCategories[categoryName].priceFormat
+                ) {
+                  categoryPriceFormat =
+                    updatedCategories[categoryName].priceFormat;
+                  console.log(
+                    `✓ Kategori ${categoryName} için priceFormat: ${categoryPriceFormat}`
+                  );
+                } else {
+                  console.warn(
+                    `⚠️ Kategori ${categoryName} için priceFormat bulunamadı, tekil kullanılıyor`
+                  );
+                }
+
+                // Kategorideki ürünleri işlemek için Promise dizisi
+                const productPromises = Object.entries(categoryProducts).map(
+                  ([productIndex, product], pIndex) =>
+                    new Promise((resolveProduct) => {
+                      // Her ürün işlemesi arasında 0.5ms gecikme ekle
+                      setTimeout(async () => {
+                        try {
+                          if (!product.productCollectionId) {
+                            resolveProduct();
+                            return;
+                          }
+
+                          const productRef = ref(
+                            database,
+                            `products/${categoryName}/${product.productCollectionId}`
+                          );
+                          const snapshot = await get(productRef);
+
+                          if (snapshot.exists()) {
+                            const productData = snapshot.val();
+                            const basePrice = Number(
+                              productData.price || product.price
+                            );
+
+                            // Width ve height değerlerini sayıya çevir
+                            const productWidth = Number(productData.width || 0);
+                            const productHeight = Number(
+                              productData.height || 0
+                            );
+                            const kontiWidth = Number(
+                              dimensions.kontiWidth || 0
+                            );
+                            const kontiHeight = Number(
+                              dimensions.kontiHeight || 0
+                            );
+                            const anaWidth = Number(dimensions.anaWidth || 0); // Konti değerleri ana değerler olarak kullan
+                            const anaHeight = Number(dimensions.anaHeight || 0); // Konti değerleri ana değerler olarak kullan
+
+                            let calculatedPrice;
+
+                            // Artis kategorisi için özel hesaplama
+                            if (categoryPriceFormat === "artis") {
+                              const currentWidth = anaWidth;
+                              const currentHeight = anaHeight;
+                              const newWidth = Number(productData?.width || 0);
+                              const newHeight = Number(
+                                productData?.height || 0
+                              );
+                              const totalWidth = currentWidth + newWidth;
+                              const totalHeight = currentHeight + newHeight;
+                              const newArea = totalWidth * totalHeight;
+                              const anaArea = currentWidth * currentHeight;
+
+                              const calculatedPrice = calculatePrice({
+                                priceFormat: "artis",
+                                basePrice: Number(selectedProduct.price),
+                                width: newWidth,
+                                height: newHeight,
+                                kontiWidth: currentWidth, // Mevcut konti boyutlarını kullan
+                                kontiHeight: currentHeight, // Mevcut konti boyutlarını kullan
+                              });
+                            } else {
+                              // Diğer kategoriler için normal hesaplama
+                              calculatedPrice = calculatePrice({
+                                priceFormat: categoryPriceFormat,
+                                basePrice,
+                                width: productWidth,
+                                height: productHeight,
+                                kontiWidth,
+                                kontiHeight,
+                                anaWidth,
+                                anaHeight,
+                              });
+                            }
+
+                            console.log(
+                              `Ürün: ${productData.name}, Fiyat: ${basePrice}, Hesaplanan: ${calculatedPrice}`
+                            );
+
+                            // Fiyatı güncelle
+                            updatedOrderData[categoryName][productIndex] = {
+                              ...product,
+                              price: calculatedPrice,
+                            };
+                          }
+                          resolveProduct();
+                        } catch (error) {
+                          console.error(
+                            `${categoryName} ürün fiyatı güncellenirken hata:`,
+                            error
+                          );
+                          resolveProduct();
+                        }
+                      }, pIndex * 0.5); // Her ürün arasında 0.5ms gecikme
+                    })
+                );
+
+                // Kategori içindeki tüm ürünlerin işlenmesini bekle
+                await Promise.all(productPromises);
+                resolve();
+              } catch (error) {
+                console.error(
+                  `Kategori ${categoryName} işlenirken hata:`,
+                  error
+                );
+                resolve();
+              }
+            }, categoryIndex * 0.5); // Her kategori arasında 0.5ms gecikme
+          })
+      );
+
+      // Tüm kategorilerin işlenmesini bekle
+      await Promise.all(categoryPromises);
+
+      // Bonus ürünlerin fiyatlarını güncelle
+      const updatedBonusItems = [...savedItems];
+
+      // Bonus öğeleri işlemek için Promise dizisi
+      const bonusPromises = updatedBonusItems.map(
+        (bonusItem, index) =>
+          new Promise((resolve) => {
+            // Her bonus öğesi arasında 0.5ms gecikme ekle
+            setTimeout(async () => {
+              try {
+                // Sadece fiyat olarak eklenmiş öğeler için güncelleme yapmıyoruz
+                if (
+                  bonusItem.priceOnly ||
+                  !bonusItem.category ||
+                  !bonusItem.product
+                ) {
+                  resolve();
+                  return;
+                }
+
+                // Bonus ürünün kategorisinin priceFormat değerini alalım
+                let bonusCategoryPriceFormat = "tekil"; // Varsayılan değer
+                const matchingBonusCategory = findCategoryByPropertyName(
+                  bonusItem.category
+                );
+
+                if (
+                  matchingBonusCategory &&
+                  matchingBonusCategory.priceFormat
+                ) {
+                  bonusCategoryPriceFormat = matchingBonusCategory.priceFormat;
+                } else if (
+                  updatedCategories[bonusItem.category] &&
+                  updatedCategories[bonusItem.category].priceFormat
+                ) {
+                  bonusCategoryPriceFormat =
+                    updatedCategories[bonusItem.category].priceFormat;
+                }
+
+                const productRef = ref(
+                  database,
+                  `products/${bonusItem.category}/${bonusItem.product}`
+                );
+                const snapshot = await get(productRef);
+
+                if (snapshot.exists()) {
+                  const productData = snapshot.val();
+                  const basePrice = Number(
+                    productData.price || bonusItem.price
+                  );
+
+                  // Width ve height değerlerini sayıya çevir
+                  const itemWidth = Number(bonusItem.width || 0);
+                  const itemHeight = Number(bonusItem.height || 0);
+                  const kontiWidth = Number(dimensions.kontiWidth || 0);
+                  const kontiHeight = Number(dimensions.kontiHeight || 0);
+                  const anaWidth = Number(dimensions.kontiWidth || 0); // Konti değerleri ana değerler olarak kullan
+                  const anaHeight = Number(dimensions.kontiHeight || 0); // Konti değerleri ana değerler olarak kullan
+
+                  let calculatedPrice;
+
+                  // Artis kategorisi için özel hesaplama
+                  if (bonusCategoryPriceFormat === "artis") {
+                    const currentWidth = anaWidth;
+                    const currentHeight = anaHeight;
+                    const newWidth = Number(productData?.width || 0);
+                    const newHeight = Number(productData?.height || 0);
+                    const totalWidth = currentWidth + newWidth;
+                    const totalHeight = currentHeight + newHeight;
+                    const newArea = totalWidth * totalHeight;
+                    const anaArea = currentWidth * currentHeight;
+
+                    const calculatedPrice = calculatePrice({
+                      priceFormat: "artis",
+                      basePrice: Number(selectedProduct.price),
+                      width: newWidth,
+                      height: newHeight,
+                      kontiWidth: currentWidth, // Mevcut konti boyutlarını kullan
+                      kontiHeight: currentHeight, // Mevcut konti boyutlarını kullan
+                    });
+                  } else {
+                    // Diğer kategoriler için normal hesaplama
+                    calculatedPrice = calculatePrice({
+                      priceFormat: bonusCategoryPriceFormat,
+                      basePrice,
+                      width: itemWidth,
+                      height: itemHeight,
+                      kontiWidth,
+                      kontiHeight,
+                      anaWidth,
+                      anaHeight,
+                    });
+                  }
+
+                  // Bonus ürünün fiyatını güncelle
+                  updatedBonusItems[index] = {
+                    ...bonusItem,
+                    price: calculatedPrice,
+                  };
+                }
+                resolve();
+              } catch (error) {
+                console.error(`Bonus ürün fiyatı güncellenirken hata:`, error);
+                resolve();
+              }
+            }, index * 0.5); // Her bonus öğesi arasında 0.5ms gecikme
+          })
+      );
+
+      // Tüm bonus öğelerinin işlenmesini bekle
+      await Promise.all(bonusPromises);
+
+      // State'leri güncelle
+      setLocalOrderData(updatedOrderData);
+      setSavedItems(updatedBonusItems);
+
+      // İşlem tamamlandı bildirimi
+      toast.dismiss(loadingToast);
+      toast.success("Ürün fiyatları başarıyla güncellendi");
+    } catch (error) {
+      console.error("Fiyat güncellemesi sırasında hata:", error);
+      toast.error("Fiyat güncellemesi sırasında bir hata oluştu");
     }
   };
   return (
@@ -137,25 +461,45 @@ const OrderEditModal = ({
                     <h2 className="text-lg font-medium text-gray-200">
                       Sipariş Detayları
                     </h2>
-                    <span className="text-sm text-gray-400">
-                      {
-                        Object.keys(localOrderData).filter(
-                          (key) =>
-                            ![
-                              "status",
-                              "verandaWidth",
-                              "verandaHeight",
-                              "dimensions",
-                              "kontiWidth",
-                              "kontiHeight",
-                              "notes",
-                            ].includes(key)
-                        ).length
-                      }{" "}
-                      Ürün
-                    </span>
+                    <div className="flex items-center space-x-2">
+                      <span className="text-sm text-gray-400">
+                        {
+                          Object.keys(localOrderData).filter(
+                            (key) =>
+                              ![
+                                "status",
+                                "verandaWidth",
+                                "verandaHeight",
+                                "dimensions",
+                                "kontiWidth",
+                                "kontiHeight",
+                                "notes",
+                              ].includes(key)
+                          ).length
+                        }{" "}
+                        Ürün
+                      </span>
+                      <button
+                        onClick={handleRefreshPrices}
+                        className="p-1 rounded hover:bg-gray-700/50 text-blue-400 hover:text-blue-300 transition-colors"
+                        title="Fiyatları Güncelle"
+                      >
+                        <svg
+                          className="w-5 h-5"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth="2"
+                            d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                          />
+                        </svg>
+                      </button>
+                    </div>
                   </div>
-
                   <div className="grid grid-cols-2 gap-4">
                     {/* OrderDetails */}
                     <div className="border-r border-gray-700 pr-3">
@@ -252,6 +596,8 @@ OrderEditModal.propTypes = {
     dimensions: PropTypes.shape({
       kontiWidth: PropTypes.number,
       kontiHeight: PropTypes.number,
+      anaWidth: PropTypes.number,
+      anaHeight: PropTypes.number,
       verandaWidth: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
       verandaHeight: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
       length: PropTypes.number,
@@ -268,6 +614,8 @@ OrderEditModal.propTypes = {
   initialDimensions: PropTypes.shape({
     kontiWidth: PropTypes.number,
     kontiHeight: PropTypes.number,
+    anaWidth: PropTypes.number,
+    anaHeight: PropTypes.number,
     verandaWidth: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
     verandaHeight: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
     length: PropTypes.number,

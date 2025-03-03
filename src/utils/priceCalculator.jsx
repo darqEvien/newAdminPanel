@@ -5,6 +5,8 @@ export const calculatePrice = ({
   height = 0,
   kontiWidth = 0,
   kontiHeight = 0,
+  anaWidth = 0,
+  anaHeight = 0,
 }) => {
   // Move all declarations outside switch
   let area = 0;
@@ -30,7 +32,6 @@ export const calculatePrice = ({
       return perimeter * Number(basePrice);
 
     case "artis":
-      
       // Konti alanı
       kontiArea = kontiWidth * kontiHeight;
       newWidth = Number(kontiWidth) + Number(width);
