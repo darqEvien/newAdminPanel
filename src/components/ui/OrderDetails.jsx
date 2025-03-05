@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useMemo } from "react";
 import PropTypes from "prop-types";
-import { toast } from "react-toastify";
 import { calculatePrice } from "../../utils/priceCalculator";
 const OrderDetails = ({
   categories,
@@ -148,12 +147,12 @@ const OrderDetails = ({
 
               // Mevcut boyutlara göre hesaplama yap
               const kontiWidth = Number(
-                updatedOrderData.dimensions?.anaWidth ||
+                updatedOrderData.dimensions?.kontiWidth ||
                   dimensionsToSet.kontiWidth ||
                   0
               );
               const kontiHeight = Number(
-                updatedOrderData.dimensions?.anaHeight ||
+                updatedOrderData.dimensions?.kontiHeight ||
                   dimensionsToSet.kontiHeight ||
                   0
               );
@@ -360,120 +359,137 @@ const OrderDetails = ({
           });
         }
         // ARTİS KATEGORİSİ İŞLEMLERİ
-        // ARTİS KATEGORİSİ İŞLEMLERİ bölümünü güncelleyelim
+        // ARTİS KATEGORİSİ İŞLEMLERİ
         else if (category?.priceFormat === "artis") {
-          // Konti boyutlarını kontrol et
-          let currentKontiWidth = Number(dimensions.kontiWidth) || 0;
-          let currentKontiHeight = Number(dimensions.kontiHeight) || 0;
-
-          // Eğer konti boyutları yoksa ve konti kategorisinde ürün varsa, oradan al
-          if (
-            (!currentKontiWidth || !currentKontiHeight) &&
-            localOrderData["konti"]
-          ) {
-            const kontiProduct = Object.values(localOrderData["konti"])[0];
-            if (kontiProduct) {
-              currentKontiWidth = Number(kontiProduct.width || 0);
-              currentKontiHeight = Number(kontiProduct.height || 0);
-            }
-          }
-
-          // Konti boyutları hala yoksa, istemiyorum seç ve çık
-          if (!currentKontiWidth || !currentKontiHeight) {
-            toast.error("Önce konti ürünü seçmelisiniz!"); // Toast ekleyin
-            const istemiyorumProduct = {
-              id: "istemiyorum",
-              name: "İstemiyorum",
-              price: 0,
-            };
-
-            setLocalOrderData((prev) => ({
-              ...prev,
-              [categoryName]: {
-                ...prev[categoryName],
-                [productIndex]: {
-                  name: "İstemiyorum",
-                  price: 0,
-                  productCollectionId: "istemiyorum",
-                  width: 0,
-                  height: 0,
-                },
-              },
-            }));
-
-            setSelectedProduct(istemiyorumProduct);
-            setEditingValues({
-              name: "İstemiyorum",
-              price: "0",
-            });
-
-            return;
-          }
+          const currentKontiWidth = Number(dimensions.kontiWidth) || 0;
+          const currentKontiHeight = Number(dimensions.kontiHeight) || 0;
 
           // Yeni ürün boyutları
           const newWidth = Number(productData?.width || 0);
           const newHeight = Number(productData?.height || 0);
 
-          // İstemiyorum seçeneği kontrolü
+          // "İstemiyorum" kontrolü
           const isRemoving = selectedProduct.id === "istemiyorum";
 
-          // Mevcut ürün boyutları (değiştirilecek ürün)
-          const currentWidth = Number(currentProduct?.width || 0);
-          const currentHeight = Number(currentProduct?.height || 0);
+          // Mevcut ürünün tüm bilgilerini konsolda görelim
+          console.log("Mevcut ürün bilgileri:", currentProduct);
+
+          const currentProductData = currentProduct?.productCollectionId
+            ? products[categoryName]?.[currentProduct.productCollectionId]
+            : null;
+          // Mevcut ürün boyutları - Doğru şekilde almak için localOrderData'dan kontrol edelim
+          const currentWidth = Number(
+            currentProductData?.width || currentProduct?.width || 0
+          );
+          const currentHeight = Number(
+            currentProductData?.height || currentProduct?.height || 0
+          );
+
+          // Ürün bilgilerini detaylı logla
+          console.log("Ürün boyutları:", {
+            kategori: categoryName,
+            mevcut_urun_id: currentProduct?.productCollectionId,
+            mevcut_width: currentWidth,
+            mevcut_height: currentHeight,
+            yeni_urun_id: selectedProduct.id,
+            yeni_width: newWidth,
+            yeni_height: newHeight,
+          });
 
           // Güncellenmiş boyutları hesapla
           let updatedWidth = currentKontiWidth;
           let updatedHeight = currentKontiHeight;
 
+          // Kategori türüne göre boyut güncelleme
           if (categoryName.toLowerCase().includes("en")) {
-            // En için fiyat hesaplama
-            const calculatedPrice = isRemoving
-              ? 0
-              : newWidth * currentKontiHeight * basePrice;
-
-            setLocalOrderData((prev) => ({
-              ...prev,
-              [categoryName]: {
-                ...prev[categoryName],
-                [productIndex]: {
-                  name: selectedProduct.name,
-                  price: calculatedPrice,
-                  productCollectionId: selectedProduct.id,
-                  width: isRemoving ? 0 : newWidth,
-                  height: currentKontiHeight, // Konti yüksekliğini kullan
-                },
-              },
-            }));
-
-            setEditingValues({
-              name: selectedProduct.name,
-              price: calculatedPrice.toString(),
-            });
+            if (isRemoving) {
+              // En ürününü çıkarırken, currentWidth değerini konti genişliğinden çıkar
+              updatedWidth = Math.max(0, currentKontiWidth - currentWidth);
+            } else {
+              // Mevcut en ürününü değiştirirken veya eklerken
+              updatedWidth = Math.max(
+                0,
+                currentKontiWidth - currentWidth + newWidth
+              );
+            }
           } else if (categoryName.toLowerCase().includes("boy")) {
-            // Boy için fiyat hesaplama
-            const calculatedPrice = isRemoving
-              ? 0
-              : newHeight * currentKontiWidth * basePrice;
-
-            setLocalOrderData((prev) => ({
-              ...prev,
-              [categoryName]: {
-                ...prev[categoryName],
-                [productIndex]: {
-                  name: selectedProduct.name,
-                  price: calculatedPrice,
-                  productCollectionId: selectedProduct.id,
-                  width: currentKontiWidth, // Konti genişliğini kullan
-                  height: isRemoving ? 0 : newHeight,
-                },
-              },
-            }));
-
-            setEditingValues({
-              name: selectedProduct.name,
-              price: calculatedPrice.toString(),
-            });
+            if (isRemoving) {
+              // Boy ürününü çıkarırken, currentHeight değerini konti yüksekliğinden çıkar
+              updatedHeight = Math.max(0, currentKontiHeight - currentHeight);
+            } else {
+              // Mevcut boy ürününü değiştirirken veya eklerken
+              updatedHeight = Math.max(
+                0,
+                currentKontiHeight - currentHeight + newHeight
+              );
+            }
           }
+
+          console.log(`${categoryName} işlemi:`, {
+            işlem: isRemoving ? "Çıkarma" : "Ekleme/Değiştirme",
+            öncekiBoyutlar: {
+              width: currentKontiWidth,
+              height: currentKontiHeight,
+            },
+            ürünBoyutları: { width: currentWidth, height: currentHeight },
+            yeniBoyutlar: { width: updatedWidth, height: updatedHeight },
+          });
+
+          // Alan farkına göre fiyat hesapla
+          let calculatedPrice = 0;
+
+          if (!isRemoving) {
+            if (categoryName.toLowerCase().includes("en")) {
+              // En ürünü için: yükseklik * genişlik farkı * birim fiyat
+              calculatedPrice =
+                currentKontiHeight *
+                newWidth *
+                Number(productData?.price || basePrice);
+            } else if (categoryName.toLowerCase().includes("boy")) {
+              // Boy ürünü için: genişlik * yükseklik farkı * birim fiyat
+              calculatedPrice =
+                currentKontiWidth *
+                newHeight *
+                Number(productData?.price || basePrice);
+            }
+          }
+
+          // Önce boyutları güncelle
+          setDimensions((prev) => ({
+            ...prev,
+            kontiWidth: updatedWidth,
+            kontiHeight: updatedHeight,
+            anaWidth: updatedWidth,
+            anaHeight: updatedHeight,
+          }));
+
+          // Sonra sipariş verilerini güncelle
+          setLocalOrderData((prev) => ({
+            ...prev,
+            dimensions: {
+              ...prev.dimensions,
+              kontiWidth: updatedWidth,
+              kontiHeight: updatedHeight,
+              anaWidth: updatedWidth,
+              anaHeight: updatedHeight,
+            },
+            [categoryName]: {
+              ...prev[categoryName],
+              [productIndex]: {
+                name: selectedProduct.name,
+                price: calculatedPrice,
+                productCollectionId: selectedProduct.id,
+                width: isRemoving ? 0 : newWidth,
+                height: isRemoving ? 0 : newHeight,
+              },
+            },
+          }));
+
+          // Düzenleme değerlerini güncelle
+          setEditingValues({
+            name: selectedProduct.name,
+            price: calculatedPrice.toString(),
+          });
         }
         // DİĞER KATEGORİLER İŞLEMLERİ
         else {
