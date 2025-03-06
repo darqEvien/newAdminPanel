@@ -438,7 +438,7 @@ const OrderEditModal = ({
         // State'leri güncelle
         setLocalOrderData(updatedOrderData);
         setSavedItems(updatedBonusItems);
-
+        setShouldRecalcPrices(false);
         // İşlem tamamlandı bildirimi
         toast.dismiss(loadingToast);
         toast.success("Ürün fiyatları başarıyla güncellendi");

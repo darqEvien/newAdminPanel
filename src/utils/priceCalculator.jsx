@@ -1,3 +1,35 @@
+// Mevcut calculatePrice fonksiyonunun altına ekleyin
+export const calculateArtisPrice = ({
+  categoryName,
+  productWidth,
+  productHeight,
+  kontiWidth,
+  kontiHeight,
+  basePrice,
+}) => {
+  // En kategorisi için
+  if (categoryName.toLowerCase().includes("en")) {
+    const calculatedPrice = kontiHeight * productWidth * basePrice;
+    console.log(
+      `En kategorisi hesaplama: ${kontiHeight} * ${productWidth} * ${basePrice} = ${calculatedPrice}`
+    );
+    return calculatedPrice;
+  }
+  // Boy kategorisi için
+  else if (categoryName.toLowerCase().includes("boy")) {
+    const calculatedPrice = kontiWidth * productHeight * basePrice;
+    console.log(
+      `Boy kategorisi hesaplama: ${kontiWidth} * ${productHeight} * ${basePrice} = ${calculatedPrice}`
+    );
+    return calculatedPrice;
+  }
+  // Diğer artis kategorileri için
+  else {
+    // Burada normal artis hesaplamasını yapabiliriz veya null döndürebiliriz
+    return null;
+  }
+};
+
 export const calculatePrice = ({
   priceFormat,
   basePrice,

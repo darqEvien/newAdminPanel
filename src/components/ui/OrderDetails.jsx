@@ -15,11 +15,11 @@ const OrderDetails = ({
   dimensions,
   setDimensions,
   shouldRecalc = false,
+  setShouldRecalcPrices = () => {},
 }) => {
   const isUpdating = useRef(false);
   const initialCalcDone = useRef(false);
   const isInitialMount = useRef(true);
-  const skipInitialCalc = useRef(true);
 
   useEffect(() => {
     // Ensure dimensions are initialized properly when the component mounts
@@ -62,7 +62,6 @@ const OrderDetails = ({
       }
     }
 
-    // Gerekli veriler yoksa veya güncelleme yapılıyorsa çık
     if (
       !categories ||
       !products ||
@@ -74,12 +73,6 @@ const OrderDetails = ({
       return;
     }
 
-    // ÖNEMLİ: Modal açıldığında otomatik hesaplamayı engelle
-    // if (skipInitialCalc.current && !shouldRecalc) {
-    //   skipInitialCalc.current = false;
-    //   return;
-    // }
-    // Sadece shouldRecalc true olduğunda veya artis ürünleri 0 fiyatlı olduğunda çalış
     const needsArtisInitialization = Object.values(categories)
       .filter((cat) => cat.priceFormat === "artis")
       .some((category) => {
@@ -103,7 +96,7 @@ const OrderDetails = ({
     try {
       // Derin kopya oluştur (mutasyon sorunlarını önlemek için)
       const updatedOrderData = JSON.parse(JSON.stringify(localOrderData));
-      let dimensionsUpdated = false;
+
       let dimensionsToSet = { ...dimensions };
 
       // Hesaplamalar...
@@ -202,20 +195,6 @@ const OrderDetails = ({
     return dimensions.length === 2 ? dimensions : [0, 0];
   };
 
-  // Kategorileri sırala
-  const sortCategories = useCallback(
-    (a, b) => {
-      const categoryA = Object.values(categories).find(
-        (cat) => cat.propertyName?.toLowerCase() === a.toLowerCase()
-      );
-      const categoryB = Object.values(categories).find(
-        (cat) => cat.propertyName?.toLowerCase() === b.toLowerCase()
-      );
-      return (categoryA?.order || 999) - (categoryB?.order || 999);
-    },
-    [categories]
-  );
-
   // Ürünleri sırala
   const sortProducts = useCallback((products) => {
     return Object.entries(products).sort((a, b) => {
@@ -288,10 +267,8 @@ const OrderDetails = ({
         const productData = products[categoryName]?.[selectedProduct.id];
         const basePrice = Number(selectedProduct.price);
 
-        // Get the current product for comparison
         const currentProduct = localOrderData[categoryName]?.[productIndex];
 
-        // KONTİ KATEGORİSİ İŞLEMLERİ
         if (category?.priceFormat === "konti") {
           // Boyutları hazırla
           const kontiWidth = Number(productData?.width) || 0;
@@ -357,10 +334,7 @@ const OrderDetails = ({
             name: selectedProduct.name,
             price: basePrice.toString(),
           });
-        }
-        // ARTİS KATEGORİSİ İŞLEMLERİ
-        // ARTİS KATEGORİSİ İŞLEMLERİ
-        else if (category?.priceFormat === "artis") {
+        } else if (category?.priceFormat === "artis") {
           const currentKontiWidth = Number(dimensions.kontiWidth) || 0;
           const currentKontiHeight = Number(dimensions.kontiHeight) || 0;
 
@@ -552,10 +526,6 @@ const OrderDetails = ({
         // Get current product data to preserve width/height
         const currentProduct =
           localOrderData[categoryName]?.[productIndex] || {};
-        const category = Object.values(categories).find(
-          (cat) =>
-            cat.propertyName?.toLowerCase() === categoryName.toLowerCase()
-        );
 
         setLocalOrderData((prev) => ({
           ...prev,
@@ -602,27 +572,313 @@ const OrderDetails = ({
     [setEditingValues]
   );
   // Add this handler function after the handlePriceChange function
+
+  // recalculateArtisProductPrices fonksiyonunu güncelleyelim
+  const recalculateArtisProductPrices = useCallback(
+    (currentOrderData, kontiWidth, kontiHeight) => {
+      // Daha detaylı loglama yapalım
+      console.log("recalculateArtisProductPrices çağrıldı:", {
+        kontiWidth,
+        kontiHeight,
+        currentOrderData,
+      });
+
+      // Artis kategorilerini bul
+      const artisCategories = Object.values(categories).filter(
+        (cat) => cat.priceFormat === "artis"
+      );
+
+      if (artisCategories.length === 0) {
+        console.log("Artis kategorisi bulunamadı");
+        return;
+      }
+
+      // Güncellenmiş sipariş verilerini hazırla
+      const updatedOrderData = { ...currentOrderData };
+      let hasChanges = false;
+
+      // Tüm artis kategorilerini kontrol et
+      artisCategories.forEach((category) => {
+        const categoryName = category.propertyName;
+        console.log(`Kategori işleniyor: ${categoryName}`);
+
+        // Bu kategorideki ürünleri işle
+        if (updatedOrderData[categoryName]) {
+          Object.entries(updatedOrderData[categoryName]).forEach(
+            ([productIndex, product]) => {
+              // productCollectionId yoksa veya "istemiyorum" ise atla
+              if (
+                !product.productCollectionId ||
+                product.productCollectionId === "istemiyorum"
+              ) {
+                console.log(
+                  `Ürün atlandı: ${product.name} (productCollectionId yok veya istemiyorum)`
+                );
+                return;
+              }
+
+              const productData =
+                products[categoryName]?.[product.productCollectionId];
+
+              // Ürün bilgilerini logla
+              console.log(`Ürün işleniyor: ${product.name}`, {
+                productData,
+                product,
+              });
+
+              // Ürün bilgisi yoksa product nesnesindeki değerleri kullan
+              const basePrice = Number(
+                productData?.price || product.price || 0
+              );
+              const productWidth = Number(
+                product.width || productData?.width || 0
+              );
+              const productHeight = Number(
+                product.height || productData?.height || 0
+              );
+
+              let calculatedPrice = 0;
+
+              if (categoryName.toLowerCase().includes("en")) {
+                calculatedPrice = kontiHeight * productWidth * basePrice;
+                console.log(
+                  `Yeniden hesaplama - En: ${kontiHeight} * ${productWidth} * ${basePrice} = ${calculatedPrice}`
+                );
+              } else if (categoryName.toLowerCase().includes("boy")) {
+                calculatedPrice = kontiWidth * productHeight * basePrice;
+                console.log(
+                  `Yeniden hesaplama - Boy: ${kontiWidth} * ${productHeight} * ${basePrice} = ${calculatedPrice}`
+                );
+              } else {
+                // Diğer artis kategorileri için hesaplama
+                calculatedPrice = calculatePrice({
+                  priceFormat: "artis",
+                  basePrice: basePrice,
+                  width: productWidth,
+                  height: productHeight,
+                  kontiWidth: kontiWidth,
+                  kontiHeight: kontiHeight,
+                  categoryName: categoryName,
+                });
+                console.log(`Diğer artis hesaplaması: ${calculatedPrice}`);
+              }
+
+              if (calculatedPrice > 0 && calculatedPrice !== product.price) {
+                updatedOrderData[categoryName][productIndex] = {
+                  ...product,
+                  price: calculatedPrice,
+                };
+                hasChanges = true;
+                console.log(
+                  `Ürün fiyatı güncellendi: ${product.name}, ${product.price} -> ${calculatedPrice}`
+                );
+              }
+            }
+          );
+        } else {
+          console.log(`${categoryName} kategorisi için ürün bulunamadı`);
+        }
+      });
+
+      // Değişiklik varsa state'i güncelle
+      if (hasChanges) {
+        console.log("Artis ürün fiyatları güncellendi, state güncellenecek");
+        setLocalOrderData(updatedOrderData);
+
+        // Parent'a bildir ve fiyat hesaplama flag'ini aktifleştir
+        setShouldRecalcPrices(true);
+      } else {
+        console.log("Değişiklik yok, state güncellenmeyecek");
+      }
+    },
+    [
+      categories,
+      products,
+      setLocalOrderData,
+      setShouldRecalcPrices,
+      calculatePrice,
+    ]
+  );
+
+  // handleDelete fonksiyonunu da güncelleyelim
   const handleDelete = useCallback(
     (categoryName, productIndex) => {
-      // Show confirmation dialog
+      console.log(`Ürün siliniyor: ${categoryName}-${productIndex}`);
 
-      setLocalOrderData((prev) => {
-        const newData = { ...prev };
-        // Remove this item
-        const updatedCategory = { ...newData[categoryName] };
-        delete updatedCategory[productIndex];
+      // Önce silinecek ürünün bilgilerini al
+      const productToDelete = localOrderData[categoryName]?.[productIndex];
+      if (!productToDelete) {
+        console.error(
+          `Silinecek ürün bulunamadı: ${categoryName}-${productIndex}`
+        );
+        return;
+      }
 
-        // Reindex the remaining items
-        const reindexed = {};
-        Object.values(updatedCategory).forEach((item, index) => {
-          reindexed[index] = item;
+      // Kategori bilgisini al
+      const category = Object.values(categories).find(
+        (cat) => cat.propertyName?.toLowerCase() === categoryName.toLowerCase()
+      );
+
+      if (!category) {
+        console.error(`Kategori bulunamadı: ${categoryName}`);
+        return;
+      }
+
+      // Artis kategorisi kontrolü
+      const isArtisCategory = category?.priceFormat === "artis";
+      console.log(`Kategori artis mi: ${isArtisCategory}`);
+
+      // ProductCollectionId'yi kontrol et
+      const productId = productToDelete.productCollectionId;
+      console.log(`productId: ${productId}, productToDelete:`, productToDelete);
+
+      // Ürün bilgilerini products veya localOrderData'dan al
+      const productFromDB =
+        productId && productId !== "istemiyorum"
+          ? products[categoryName]?.[productId]
+          : null;
+
+      // Mevcut ürünün boyutlarını al
+      const currentWidth = Number(
+        productFromDB?.width || productToDelete?.width || 0
+      );
+      const currentHeight = Number(
+        productFromDB?.height || productToDelete?.height || 0
+      );
+
+      // Mevcut konti boyutları
+      const currentKontiWidth = Number(dimensions.kontiWidth || 0);
+      const currentKontiHeight = Number(dimensions.kontiHeight || 0);
+
+      console.log("Mevcut boyutlar:", {
+        ürünBilgileri: productToDelete,
+        ürünBoyutları: { width: currentWidth, height: currentHeight },
+        kontiBoyutları: {
+          width: currentKontiWidth,
+          height: currentKontiHeight,
+        },
+        dbÜrün: productFromDB,
+      });
+
+      // Artis kategorisinde ve EN veya BOY kategorisi ise boyutları güncelle
+      if (isArtisCategory) {
+        let updatedWidth = currentKontiWidth;
+        let updatedHeight = currentKontiHeight;
+
+        if (categoryName.toLowerCase().includes("en")) {
+          // Ürünün gerçek genişliğini kullan, 0 ise değişiklik yapma
+          if (currentWidth > 0) {
+            updatedWidth = Math.max(0, currentKontiWidth - currentWidth);
+            console.log(
+              `En ürünü siliniyor: Konti genişliği ${currentKontiWidth} -> ${updatedWidth} olarak güncelleniyor`
+            );
+          } else {
+            console.log(
+              `En ürünü siliniyor: Ürün genişliği 0, boyut değiştirilmedi`
+            );
+          }
+        } else if (categoryName.toLowerCase().includes("boy")) {
+          // Ürünün gerçek yüksekliğini kullan, 0 ise değişiklik yapma
+          if (currentHeight > 0) {
+            updatedHeight = Math.max(0, currentKontiHeight - currentHeight);
+            console.log(
+              `Boy ürünü siliniyor: Konti yüksekliği ${currentKontiHeight} -> ${updatedHeight} olarak güncelleniyor`
+            );
+          } else {
+            console.log(
+              `Boy ürünü siliniyor: Ürün yüksekliği 0, boyut değiştirilmedi`
+            );
+          }
+        }
+
+        // Boyutlar güncellendi mi kontrol et
+        const dimensionsChanged =
+          updatedWidth !== currentKontiWidth ||
+          updatedHeight !== currentKontiHeight;
+
+        console.log("Boyutlar güncelleniyor:", {
+          kontiWidth: updatedWidth,
+          kontiHeight: updatedHeight,
+          değişiklikVar: dimensionsChanged,
         });
 
-        newData[categoryName] = reindexed;
-        return newData;
-      });
+        // Boyutları güncelle
+        setDimensions((prev) => ({
+          ...prev,
+          kontiWidth: updatedWidth,
+          kontiHeight: updatedHeight,
+          anaWidth: updatedWidth,
+          anaHeight: updatedHeight,
+        }));
+
+        // LocalOrderData içindeki dimensions bilgisini de güncelle
+        setLocalOrderData((prev) => {
+          const newData = { ...prev };
+
+          // Mevcut ürünü kaldır
+          const updatedCategory = { ...newData[categoryName] };
+          delete updatedCategory[productIndex];
+
+          // Kalan ürünleri yeniden indeksle
+          const reindexed = {};
+          Object.values(updatedCategory).forEach((item, index) => {
+            reindexed[index] = item;
+          });
+
+          // Güncellenmiş veriyi döndür
+          const updatedData = {
+            ...newData,
+            dimensions: {
+              ...newData.dimensions,
+              kontiWidth: updatedWidth,
+              kontiHeight: updatedHeight,
+              anaWidth: updatedWidth,
+              anaHeight: updatedHeight,
+            },
+            [categoryName]: reindexed,
+          };
+
+          // Sadece boyutlar değiştiyse fiyatları yeniden hesapla
+          if (dimensionsChanged) {
+            console.log("Fiyat hesaplama zamanlanıyor...");
+            setTimeout(() => {
+              console.log("Fiyat hesaplama başlıyor...");
+              recalculateArtisProductPrices(
+                updatedData,
+                updatedWidth,
+                updatedHeight
+              );
+            }, 150);
+          }
+
+          return updatedData;
+        });
+      } else {
+        // Artis kategorisi değilse sadece ürünü sil
+        setLocalOrderData((prev) => {
+          const newData = { ...prev };
+          const updatedCategory = { ...newData[categoryName] };
+          delete updatedCategory[productIndex];
+
+          // Kalan ürünleri yeniden indeksle
+          const reindexed = {};
+          Object.values(updatedCategory).forEach((item, index) => {
+            reindexed[index] = item;
+          });
+
+          newData[categoryName] = reindexed;
+          return newData;
+        });
+      }
     },
-    [setLocalOrderData]
+    [
+      localOrderData,
+      categories,
+      dimensions,
+      setDimensions,
+      setLocalOrderData,
+      recalculateArtisProductPrices,
+    ]
   );
 
   // Add this function right after handleDelete
@@ -844,6 +1100,7 @@ OrderDetails.propTypes = {
   }).isRequired,
   setDimensions: PropTypes.func.isRequired,
   shouldRecalc: PropTypes.bool,
+  setShouldRecalcPrices: PropTypes.func,
 };
 
 export default OrderDetails;
