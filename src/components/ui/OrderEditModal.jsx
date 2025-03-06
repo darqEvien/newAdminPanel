@@ -270,13 +270,15 @@ const OrderEditModal = ({
                                 // Diğer kategoriler için normal hesaplama
                                 calculatedPrice = calculatePrice({
                                   priceFormat: categoryPriceFormat,
-                                  basePrice,
+                                  basePrice: basePrice,
                                   width: productWidth,
                                   height: productHeight,
-                                  kontiWidth,
-                                  kontiHeight,
-                                  anaWidth,
-                                  anaHeight,
+                                  kontiWidth: kontiWidth,
+                                  kontiHeight: kontiHeight,
+                                  categoryName: categoryName,
+                                  anaWidth: anaWidth,
+                                  anaHeight: anaHeight,
+                                  alanPrice: productData?.alanPrice || 0,
                                 });
                               }
 

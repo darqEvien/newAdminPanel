@@ -6,21 +6,17 @@ export const calculateArtisPrice = ({
   kontiWidth,
   kontiHeight,
   basePrice,
+  alanPrice = 0,
 }) => {
   // En kategorisi için
   if (categoryName.toLowerCase().includes("en")) {
     const calculatedPrice = kontiHeight * productWidth * basePrice;
-    console.log(
-      `En kategorisi hesaplama: ${kontiHeight} * ${productWidth} * ${basePrice} = ${calculatedPrice}`
-    );
     return calculatedPrice;
   }
   // Boy kategorisi için
   else if (categoryName.toLowerCase().includes("boy")) {
     const calculatedPrice = kontiWidth * productHeight * basePrice;
-    console.log(
-      `Boy kategorisi hesaplama: ${kontiWidth} * ${productHeight} * ${basePrice} = ${calculatedPrice}`
-    );
+
     return calculatedPrice;
   }
   // Diğer artis kategorileri için
@@ -33,6 +29,7 @@ export const calculateArtisPrice = ({
 export const calculatePrice = ({
   priceFormat,
   basePrice,
+  alanPrice,
   width = 0,
   height = 0,
   kontiWidth = 0,
@@ -61,7 +58,7 @@ export const calculatePrice = ({
       return area * Number(basePrice);
 
     case "cevre":
-      perimeter = 2 * (Number(width) + Number(height));
+      perimeter = 2 * (Number(kontiWidth) + Number(kontiHeight));
       return perimeter * Number(basePrice);
 
     case "artis":
@@ -79,8 +76,14 @@ export const calculatePrice = ({
         newArea = newWidth * newHeight;
         return (newArea - kontiArea) * Number(basePrice);
       }
-    case "tasDuvar":
-      return Number(basePrice);
+    case "tasDuvar": {
+      const area = kontiHeight * kontiWidth;
+      const cevre = 2 * (kontiHeight + kontiWidth);
+      const alanFiyat = area * alanPrice;
+      const cevreFiyat = cevre * basePrice;
+
+      return Number(alanFiyat) + Number(cevreFiyat);
+    }
 
     case "konti":
       return Number(basePrice);
@@ -89,11 +92,15 @@ export const calculatePrice = ({
       return Number(basePrice);
 
     case "onYuzey":
-      return Number(basePrice);
+      return Number(basePrice) * kontiHeight;
 
     case "extra":
       return Number(basePrice);
-
+    case "bugOnleme":
+      return (
+        Number(basePrice) *
+        Number(anaHeight + anaWidth + artisArea + kontiTotalArea + ratio)
+      );
     default:
       return Number(basePrice);
   }
