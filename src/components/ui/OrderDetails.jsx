@@ -40,12 +40,23 @@ const OrderDetails = ({
   }, [localOrderData, setDimensions]);
 
   // Fiyat hesaplama useEffect'i - syntax hatası düzeltildi
+  // Fiyat hesaplama useEffect'i - tüm dinamik fiyat formatlarını kapsayacak şekilde güncellendi
   useEffect(() => {
     // İlk mount ise, bunu değiştir ve çık
     if (isInitialMount.current) {
       isInitialMount.current = false;
-      const hasValidArtisProducts = Object.values(categories)
-        .filter((cat) => cat.priceFormat === "artis")
+
+      // Tüm dinamik fiyat formatlı kategorileri kontrol et
+      const dynamicPriceFormats = [
+        "artis",
+        "metrekare",
+        "cevre",
+        "onYuzey",
+        "tasDuvar",
+      ];
+
+      const hasValidPrices = Object.values(categories)
+        .filter((cat) => dynamicPriceFormats.includes(cat.priceFormat))
         .every((category) => {
           const categoryName = category.propertyName;
           if (!localOrderData[categoryName]) return true;
@@ -57,11 +68,14 @@ const OrderDetails = ({
           );
         });
 
-      if (hasValidArtisProducts) {
+      if (hasValidPrices) {
+        initialCalcDone.current = true;
         return; // Tüm ürünlerin fiyatı varsa hesaplama yapma
       }
     }
-
+    if (initialCalcDone.current && !shouldRecalc) {
+      return;
+    }
     if (
       !categories ||
       !products ||
@@ -73,8 +87,17 @@ const OrderDetails = ({
       return;
     }
 
-    const needsArtisInitialization = Object.values(categories)
-      .filter((cat) => cat.priceFormat === "artis")
+    // Hesaplanması gereken ürünleri kontrol et - tüm dinamik fiyat formatlı kategoriler için
+    const dynamicPriceFormats = [
+      "artis",
+      "metrekare",
+      "cevre",
+      "onYuzey",
+      "tasDuvar",
+    ];
+
+    const needsPriceCalculation = Object.values(categories)
+      .filter((cat) => dynamicPriceFormats.includes(cat.priceFormat))
       .some((category) => {
         const categoryName = category.propertyName;
         if (!localOrderData[categoryName]) return false;
@@ -86,7 +109,7 @@ const OrderDetails = ({
       });
 
     // İlk yüklemede hesaplama yapma, sadece shouldRecalc true veya fiyatların hesaplanması gerekiyorsa yap
-    if (!shouldRecalc && !needsArtisInitialization) {
+    if (!shouldRecalc && !needsPriceCalculation) {
       return;
     }
 
@@ -99,12 +122,24 @@ const OrderDetails = ({
 
       let dimensionsToSet = { ...dimensions };
 
-      // Hesaplamalar...
-      // Tüm artis kategorilerini işle ve fiyatları hesapla
+      // Tüm konti boyutlarını al
+      const kontiWidth = Number(
+        updatedOrderData.dimensions?.kontiWidth ||
+          dimensionsToSet.kontiWidth ||
+          0
+      );
+      const kontiHeight = Number(
+        updatedOrderData.dimensions?.kontiHeight ||
+          dimensionsToSet.kontiHeight ||
+          0
+      );
+
+      // Tüm dinamik fiyat formatlı kategorileri işle
       Object.values(categories)
-        .filter((cat) => cat.priceFormat === "artis")
+        .filter((cat) => dynamicPriceFormats.includes(cat.priceFormat))
         .forEach((category) => {
           const categoryName = category.propertyName;
+          const priceFormat = category.priceFormat;
 
           // Bu kategori sipariş verisinde yoksa atla
           if (!updatedOrderData[categoryName]) return;
@@ -124,6 +159,7 @@ const OrderDetails = ({
               if (!productData) return;
 
               const basePrice = Number(productData.price || product.price || 0);
+              const alanPrice = Number(productData.alanPrice || 0);
               const productWidth = Number(
                 product.width || productData.width || 0
               );
@@ -138,25 +174,38 @@ const OrderDetails = ({
                 height: productHeight,
               };
 
-              // Mevcut boyutlara göre hesaplama yap
-              const kontiWidth = Number(
-                updatedOrderData.dimensions?.kontiWidth ||
-                  dimensionsToSet.kontiWidth ||
-                  0
-              );
-              const kontiHeight = Number(
-                updatedOrderData.dimensions?.kontiHeight ||
-                  dimensionsToSet.kontiHeight ||
-                  0
-              );
-
-              // Kategori türüne göre fiyat hesapla
+              // Kategori ve fiyat formatına göre fiyat hesapla
               let calculatedPrice = 0;
 
-              if (categoryName.toLowerCase().includes("en")) {
-                calculatedPrice = productWidth * kontiHeight * basePrice;
-              } else if (categoryName.toLowerCase().includes("boy")) {
-                calculatedPrice = productHeight * kontiWidth * basePrice;
+              if (priceFormat === "artis") {
+                if (categoryName.toLowerCase().includes("en")) {
+                  calculatedPrice = productWidth * kontiHeight * basePrice;
+                } else if (categoryName.toLowerCase().includes("boy")) {
+                  calculatedPrice = productHeight * kontiWidth * basePrice;
+                } else {
+                  // Standart artis hesaplaması
+                  const kontiArea = kontiWidth * kontiHeight;
+                  const newWidth = Number(kontiWidth) + Number(productWidth);
+                  const newHeight = Number(kontiHeight) + Number(productHeight);
+                  const newArea = newWidth * newHeight;
+                  calculatedPrice = (newArea - kontiArea) * basePrice;
+                }
+              } else if (priceFormat === "metrekare") {
+                // Alan hesabı: genişlik * yükseklik * birim fiyat
+                calculatedPrice = kontiWidth * kontiHeight * basePrice;
+              } else if (priceFormat === "cevre") {
+                // Çevre hesabı: (2 * (genişlik + yükseklik)) * birim fiyat
+                const perimeter = 2 * (kontiWidth + kontiHeight);
+                calculatedPrice = perimeter * basePrice;
+              } else if (priceFormat === "onYuzey") {
+                // Ön yüzey hesabı: yükseklik * birim fiyat
+                calculatedPrice = kontiHeight * basePrice;
+              } else if (priceFormat === "tasDuvar") {
+                // Taş duvar: alan * alanPrice + çevre * basePrice
+                const area = kontiWidth * kontiHeight;
+                const perimeter = 2 * (kontiWidth + kontiHeight);
+
+                calculatedPrice = area * alanPrice + perimeter * basePrice;
               }
 
               // Ürün fiyatını güncelle
@@ -186,8 +235,6 @@ const OrderDetails = ({
     categories,
     products,
     localOrderData,
-    // dimensions.kontiWidth ve dimensions.kontiHeight'i kaldırdık
-    // böylece boyutlar değiştiğinde otomatik hesaplama olmayacak
     setDimensions,
   ]);
   const parseKontiDimensions = (name) => {
@@ -467,22 +514,56 @@ const OrderDetails = ({
         }
         // DİĞER KATEGORİLER İŞLEMLERİ
         else {
-          // Standard product update without dimension changes
+          // Dinamik fiyat hesaplama
+          let calculatedPrice = basePrice;
+
+          // Mevcut boyutları al
+          const currentKontiWidth = Number(dimensions.kontiWidth) || 0;
+          const currentKontiHeight = Number(dimensions.kontiHeight) || 0;
+
+          // Ürünün kendi boyutları
+          const productWidth = Number(productData?.width || 0);
+          const productHeight = Number(productData?.height || 0);
+
+          // Kategori formatına göre fiyat hesapla
+          if (category?.priceFormat === "metrekare") {
+            // Alan hesabı: genişlik * yükseklik * birim fiyat
+            calculatedPrice =
+              currentKontiWidth * currentKontiHeight * basePrice;
+          } else if (category?.priceFormat === "cevre") {
+            // Çevre hesabı: (2 * (genişlik + yükseklik)) * birim fiyat
+            const perimeter = 2 * (currentKontiWidth + currentKontiHeight);
+            calculatedPrice = perimeter * basePrice;
+          } else if (category?.priceFormat === "onYuzey") {
+            // Ön yüzey hesabı: yükseklik * birim fiyat
+            calculatedPrice = currentKontiHeight * basePrice;
+          } else if (category?.priceFormat === "tasDuvar") {
+            // Taş duvar: alan * alanPrice + çevre * basePrice
+            const area = currentKontiWidth * currentKontiHeight;
+            const perimeter = 2 * (currentKontiWidth + currentKontiHeight);
+            const alanPrice = Number(productData?.alanPrice || 0);
+
+            calculatedPrice = area * alanPrice + perimeter * basePrice;
+          }
+
+          // Standard product update with calculated price
           setLocalOrderData((prev) => ({
             ...prev,
             [categoryName]: {
               ...prev[categoryName],
               [productIndex]: {
                 name: selectedProduct.name,
-                price: basePrice,
+                price: calculatedPrice,
                 productCollectionId: selectedProduct.id,
+                width: productWidth,
+                height: productHeight,
               },
             },
           }));
 
           setEditingValues({
             name: selectedProduct.name,
-            price: basePrice.toString(),
+            price: calculatedPrice.toString(),
           });
         }
         // Set selected product
@@ -573,7 +654,6 @@ const OrderDetails = ({
   );
   // Add this handler function after the handlePriceChange function
 
-  // recalculateArtisProductPrices fonksiyonunu güncelleyelim
   const recalculateArtisProductPrices = useCallback(
     (currentOrderData, kontiWidth, kontiHeight) => {
       // Daha detaylı loglama yapalım
@@ -583,13 +663,15 @@ const OrderDetails = ({
         currentOrderData,
       });
 
-      // Artis kategorilerini bul
-      const artisCategories = Object.values(categories).filter(
-        (cat) => cat.priceFormat === "artis"
+      // Artis ve diğer dinamik fiyatlı kategorileri bul
+      const dynamicPriceCategories = Object.values(categories).filter((cat) =>
+        ["artis", "metrekare", "cevre", "onYuzey", "tasDuvar"].includes(
+          cat.priceFormat
+        )
       );
 
-      if (artisCategories.length === 0) {
-        console.log("Artis kategorisi bulunamadı");
+      if (dynamicPriceCategories.length === 0) {
+        console.log("Dinamik fiyatlı kategori bulunamadı");
         return;
       }
 
@@ -597,10 +679,12 @@ const OrderDetails = ({
       const updatedOrderData = { ...currentOrderData };
       let hasChanges = false;
 
-      // Tüm artis kategorilerini kontrol et
-      artisCategories.forEach((category) => {
+      // Tüm dinamik fiyatlı kategorileri kontrol et
+      dynamicPriceCategories.forEach((category) => {
         const categoryName = category.propertyName;
-        console.log(`Kategori işleniyor: ${categoryName}`);
+        const priceFormat = category.priceFormat;
+
+        console.log(`Kategori işleniyor: ${categoryName} (${priceFormat})`);
 
         // Bu kategorideki ürünleri işle
         if (updatedOrderData[categoryName]) {
@@ -630,6 +714,7 @@ const OrderDetails = ({
               const basePrice = Number(
                 productData?.price || product.price || 0
               );
+              const alanPrice = Number(productData?.alanPrice || 0);
               const productWidth = Number(
                 product.width || productData?.width || 0
               );
@@ -639,31 +724,65 @@ const OrderDetails = ({
 
               let calculatedPrice = 0;
 
-              if (categoryName.toLowerCase().includes("en")) {
-                calculatedPrice = kontiHeight * productWidth * basePrice;
+              // Kategori türüne göre fiyat hesapla
+              if (priceFormat === "artis") {
+                if (categoryName.toLowerCase().includes("en")) {
+                  calculatedPrice = kontiHeight * productWidth * basePrice;
+                  console.log(
+                    `Yeniden hesaplama - En: ${kontiHeight} * ${productWidth} * ${basePrice} = ${calculatedPrice}`
+                  );
+                } else if (categoryName.toLowerCase().includes("boy")) {
+                  calculatedPrice = kontiWidth * productHeight * basePrice;
+                  console.log(
+                    `Yeniden hesaplama - Boy: ${kontiWidth} * ${productHeight} * ${basePrice} = ${calculatedPrice}`
+                  );
+                } else {
+                  // Diğer artis kategorileri için hesaplama
+                  calculatedPrice = calculatePrice({
+                    priceFormat: "artis",
+                    basePrice: basePrice,
+                    width: productWidth,
+                    height: productHeight,
+                    kontiWidth: kontiWidth,
+                    kontiHeight: kontiHeight,
+                    categoryName: categoryName,
+                  });
+                  console.log(`Diğer artis hesaplaması: ${calculatedPrice}`);
+                }
+              } else if (priceFormat === "metrekare") {
+                // Alan hesabı: genişlik * yükseklik * birim fiyat
+                calculatedPrice = kontiWidth * kontiHeight * basePrice;
                 console.log(
-                  `Yeniden hesaplama - En: ${kontiHeight} * ${productWidth} * ${basePrice} = ${calculatedPrice}`
+                  `Metrekare hesaplaması: ${kontiWidth} * ${kontiHeight} * ${basePrice} = ${calculatedPrice}`
                 );
-              } else if (categoryName.toLowerCase().includes("boy")) {
-                calculatedPrice = kontiWidth * productHeight * basePrice;
+              } else if (priceFormat === "cevre") {
+                // Çevre hesabı: (2 * (genişlik + yükseklik)) * birim fiyat
+                const perimeter = 2 * (kontiWidth + kontiHeight);
+                calculatedPrice = perimeter * basePrice;
                 console.log(
-                  `Yeniden hesaplama - Boy: ${kontiWidth} * ${productHeight} * ${basePrice} = ${calculatedPrice}`
+                  `Çevre hesaplaması: 2 * (${kontiWidth} + ${kontiHeight}) * ${basePrice} = ${calculatedPrice}`
                 );
-              } else {
-                // Diğer artis kategorileri için hesaplama
-                calculatedPrice = calculatePrice({
-                  priceFormat: "artis",
-                  basePrice: basePrice,
-                  width: productWidth,
-                  height: productHeight,
-                  kontiWidth: kontiWidth,
-                  kontiHeight: kontiHeight,
-                  categoryName: categoryName,
-                });
-                console.log(`Diğer artis hesaplaması: ${calculatedPrice}`);
+              } else if (priceFormat === "onYuzey") {
+                // Ön yüzey hesabı: yükseklik * birim fiyat
+                calculatedPrice = kontiHeight * basePrice;
+                console.log(
+                  `Ön yüzey hesaplaması: ${kontiHeight} * ${basePrice} = ${calculatedPrice}`
+                );
+              } else if (priceFormat === "tasDuvar") {
+                // Taş duvar: alan * alanPrice + çevre * basePrice
+                const area = kontiWidth * kontiHeight;
+                const perimeter = 2 * (kontiWidth + kontiHeight);
+
+                calculatedPrice = area * alanPrice + perimeter * basePrice;
+                console.log(
+                  `Taş duvar hesaplaması: (${area} * ${alanPrice}) + (${perimeter} * ${basePrice}) = ${calculatedPrice}`
+                );
               }
 
-              if (calculatedPrice > 0 && calculatedPrice !== product.price) {
+              if (
+                calculatedPrice > 0 &&
+                Math.abs(calculatedPrice - product.price) > 0.01
+              ) {
                 updatedOrderData[categoryName][productIndex] = {
                   ...product,
                   price: calculatedPrice,
@@ -682,7 +801,7 @@ const OrderDetails = ({
 
       // Değişiklik varsa state'i güncelle
       if (hasChanges) {
-        console.log("Artis ürün fiyatları güncellendi, state güncellenecek");
+        console.log("Ürün fiyatları güncellendi, state güncellenecek");
         setLocalOrderData(updatedOrderData);
 
         // Parent'a bildir ve fiyat hesaplama flag'ini aktifleştir
