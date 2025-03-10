@@ -322,124 +322,10 @@ const OrderEditModal = ({
         await Promise.all(categoryPromises);
 
         // Bonus ürünlerin fiyatlarını güncelle
-        const updatedBonusItems = [...savedItems];
-
-        // Bonus öğeleri işlemek için Promise dizisi
-        const bonusPromises = updatedBonusItems.map(
-          (bonusItem, index) =>
-            new Promise((resolve) => {
-              // Her bonus öğesi arasında 0.5ms gecikme ekle
-              setTimeout(async () => {
-                try {
-                  // Sadece fiyat olarak eklenmiş öğeler için güncelleme yapmıyoruz
-                  if (
-                    bonusItem.priceOnly ||
-                    !bonusItem.category ||
-                    !bonusItem.product
-                  ) {
-                    resolve();
-                    return;
-                  }
-
-                  // Bonus ürünün kategorisinin priceFormat değerini alalım
-                  let bonusCategoryPriceFormat = "tekil"; // Varsayılan değer
-                  const matchingBonusCategory = findCategoryByPropertyName(
-                    bonusItem.category
-                  );
-
-                  if (
-                    matchingBonusCategory &&
-                    matchingBonusCategory.priceFormat
-                  ) {
-                    bonusCategoryPriceFormat =
-                      matchingBonusCategory.priceFormat;
-                  } else if (
-                    updatedCategories[bonusItem.category] &&
-                    updatedCategories[bonusItem.category].priceFormat
-                  ) {
-                    bonusCategoryPriceFormat =
-                      updatedCategories[bonusItem.category].priceFormat;
-                  }
-
-                  const productRef = ref(
-                    database,
-                    `products/${bonusItem.category}/${bonusItem.product}`
-                  );
-                  const snapshot = await get(productRef);
-
-                  if (snapshot.exists()) {
-                    const productData = snapshot.val();
-                    const basePrice = Number(
-                      productData.price || bonusItem.price
-                    );
-
-                    // Width ve height değerlerini sayıya çevir
-                    const itemWidth = Number(bonusItem.width || 0);
-                    const itemHeight = Number(bonusItem.height || 0);
-                    const kontiWidth = Number(dimensions.kontiWidth || 0);
-                    const kontiHeight = Number(dimensions.kontiHeight || 0);
-                    const anaWidth = Number(dimensions.kontiWidth || 0); // Konti değerleri ana değerler olarak kullan
-                    const anaHeight = Number(dimensions.kontiHeight || 0); // Konti değerleri ana değerler olarak kullan
-
-                    let calculatedPrice;
-
-                    // Artis kategorisi için özel hesaplama
-                    if (bonusCategoryPriceFormat === "artis") {
-                      const currentWidth = anaWidth;
-                      const currentHeight = anaHeight;
-                      const newWidth = Number(productData?.width || 0);
-                      const newHeight = Number(productData?.height || 0);
-                      const totalWidth = currentWidth + newWidth;
-                      const totalHeight = currentHeight + newHeight;
-                      const newArea = totalWidth * totalHeight;
-                      const anaArea = currentWidth * currentHeight;
-
-                      const calculatedPrice = calculatePrice({
-                        priceFormat: "artis",
-                        basePrice: Number(selectedProduct.price),
-                        width: newWidth,
-                        height: newHeight,
-                        kontiWidth: currentWidth, // Mevcut konti boyutlarını kullan
-                        kontiHeight: currentHeight, // Mevcut konti boyutlarını kullan
-                      });
-                    } else {
-                      // Diğer kategoriler için normal hesaplama
-                      calculatedPrice = calculatePrice({
-                        priceFormat: bonusCategoryPriceFormat,
-                        basePrice,
-                        width: itemWidth,
-                        height: itemHeight,
-                        kontiWidth,
-                        kontiHeight,
-                        anaWidth,
-                        anaHeight,
-                      });
-                    }
-
-                    // Bonus ürünün fiyatını güncelle
-                    updatedBonusItems[index] = {
-                      ...bonusItem,
-                      price: calculatedPrice,
-                    };
-                  }
-                  resolve();
-                } catch (error) {
-                  console.error(
-                    `Bonus ürün fiyatı güncellenirken hata:`,
-                    error
-                  );
-                  resolve();
-                }
-              }, index * 0.5); // Her bonus öğesi arasında 0.5ms gecikme
-            })
-        );
-
-        // Tüm bonus öğelerinin işlenmesini bekle
-        await Promise.all(bonusPromises);
 
         // State'leri güncelle
         setLocalOrderData(updatedOrderData);
-        setSavedItems(updatedBonusItems);
+
         setShouldRecalcPrices(false);
         // İşlem tamamlandı bildirimi
         toast.dismiss(loadingToast);
@@ -570,20 +456,16 @@ const OrderEditModal = ({
                         <h3 className="text-sm font-medium text-gray-300">
                           Bonus Ürünler
                         </h3>
+                        <BonusItems
+                          categories={categories}
+                          products={products}
+                          savedItems={savedItems}
+                          setSavedItems={setSavedItems}
+                          dimensions={dimensions}
+                          setDimensions={setDimensions}
+                          shouldRecalc={shouldRecalcPrices}
+                        />
                       </div>
-                      <BonusItems
-                        localOrderData={localOrderData}
-                        savedItems={savedItems}
-                        newItems={newItems}
-                        categories={categories}
-                        products={products}
-                        editingSavedItem={editingSavedItem}
-                        editingSavedValues={editingSavedValues}
-                        setSavedItems={setSavedItems}
-                        setNewItems={setNewItems}
-                        setEditingSavedItem={setEditingSavedItem}
-                        setEditingSavedValues={setEditingSavedValues}
-                      />
                     </div>
                   </div>
                 </div>
