@@ -241,8 +241,87 @@ const BonusItems = ({
     },
     []
   );
+  const recalculateAllDynamicItems = useCallback(() => {
+    if (isUpdating.current) return;
+    isUpdating.current = true;
 
-  // Handle dimension changes and recalculate prices
+    try {
+      // Explicitly capture the current dimensions to avoid stale closures
+      const currentDimensions = {
+        kontiWidth: Number(dimensions.kontiWidth),
+        kontiHeight: Number(dimensions.kontiHeight),
+      };
+
+      const updatedItems = JSON.parse(JSON.stringify(savedItems)).filter(
+        (item) => !deletedItems.current.includes(item.id)
+      );
+
+      let hasChanges = false;
+
+      // Process all items with dynamic pricing formats
+      for (let i = 0; i < updatedItems.length; i++) {
+        const item = updatedItems[i];
+        if (item.custom || !item.productId) continue;
+        if (item.productId === "istemiyorum") continue;
+
+        const categoryName = item.category;
+        const category = Object.values(categories).find(
+          (cat) =>
+            cat.propertyName?.toLowerCase() === categoryName?.toLowerCase()
+        );
+
+        // Define all dynamic price formats that should be recalculated when dimensions change
+        const dynamicPriceFormats = [
+          "artis",
+          "metrekare",
+          "cevre",
+          "onYuzey",
+          "tasDuvar",
+        ];
+
+        if (!category || !dynamicPriceFormats.includes(category.priceFormat))
+          continue;
+
+        const productData = products[categoryName]?.[item.productId];
+        if (!productData) continue;
+
+        // Calculate new price using current dimensions
+        const newPrice = calculateItemPrice(
+          category.priceFormat,
+          categoryName,
+          productData,
+          currentDimensions.kontiWidth,
+          currentDimensions.kontiHeight,
+          null
+        );
+
+        if (Math.abs(newPrice - item.price) > 0.1) {
+          console.log(
+            `Recalculating ${categoryName} (${category.priceFormat}) price: ${item.price} -> ${newPrice}, using dimensions: width=${currentDimensions.kontiWidth}, height=${currentDimensions.kontiHeight}`
+          );
+          updatedItems[i].price = newPrice;
+          hasChanges = true;
+        }
+      }
+
+      if (hasChanges) {
+        setSavedItems(updatedItems);
+      }
+    } catch (error) {
+      console.error("Error recalculating dynamic item prices:", error);
+    } finally {
+      setTimeout(() => {
+        isUpdating.current = false;
+      }, 100);
+    }
+  }, [
+    categories,
+    dimensions,
+    products,
+    savedItems,
+    setSavedItems,
+    calculateItemPrice,
+  ]);
   // Handle dimension changes and recalculate prices
   useEffect(() => {
     // Skip if dimensions aren't defined
@@ -283,11 +362,17 @@ const BonusItems = ({
       // Force a recalculation with a slight delay to ensure all state updates are processed
       setTimeout(() => {
         if (!isUpdating.current) {
-          recalculateArtisItems();
+          // Call the new comprehensive function instead of just recalculateArtisItems
+          recalculateAllDynamicItems();
         }
       }, 150);
     }
-  }, [dimensions?.kontiWidth, dimensions?.kontiHeight, savedItems.length]);
+  }, [
+    dimensions?.kontiWidth,
+    dimensions?.kontiHeight,
+    savedItems.length,
+    recalculateAllDynamicItems,
+  ]);
 
   // Function to recalculate "En" and "Boy" items
   const recalculateArtisItems = useCallback(() => {
@@ -376,7 +461,6 @@ const BonusItems = ({
     calculateItemPrice,
   ]);
 
-  // Function to handle recalculation of prices after dimension changes
   // Function to handle recalculation of prices after dimension changes
   const recalculateAllArtisItems = useCallback(() => {
     if (isUpdating.current) return;
@@ -471,6 +555,8 @@ const BonusItems = ({
     setSavedItems,
     calculateItemPrice,
   ]);
+
+  // Add this function to recalculate all dimension-dependent items
 
   // Category options for dropdown
   const categoryOptions = useMemo(() => {
@@ -903,25 +989,28 @@ const BonusItems = ({
             continue;
 
           const categoryName = item.category;
-          if (
-            !categoryName.toLowerCase().includes("en") &&
-            !categoryName.toLowerCase().includes("boy")
-          )
-            continue;
-
           const category = Object.values(categories).find(
             (cat) =>
-              cat.propertyName?.toLowerCase() === categoryName.toLowerCase()
+              cat.propertyName?.toLowerCase() === categoryName?.toLowerCase()
           );
 
-          if (!category || category.priceFormat !== "artis") continue;
+          // Include all dynamic price formats
+          const dynamicPriceFormats = [
+            "artis",
+            "metrekare",
+            "cevre",
+            "onYuzey",
+            "tasDuvar",
+          ];
+          if (!category || !dynamicPriceFormats.includes(category.priceFormat))
+            continue;
 
           const productData = products[categoryName]?.[item.productId];
           if (!productData) continue;
 
           // Use the forced dimensions to calculate price
           const newPrice = calculateItemPrice(
-            "artis",
+            category.priceFormat,
             categoryName,
             productData,
             forcedDimensions.kontiWidth,
@@ -931,7 +1020,7 @@ const BonusItems = ({
 
           if (Math.abs(newPrice - item.price) > 0.1) {
             console.log(
-              `[Force] Recalculating ${categoryName} price: ${item.price} -> ${newPrice} using width=${forcedDimensions.kontiWidth}, height=${forcedDimensions.kontiHeight}`
+              `[Force] Recalculating ${categoryName} (${category.priceFormat}) price: ${item.price} -> ${newPrice} using width=${forcedDimensions.kontiWidth}, height=${forcedDimensions.kontiHeight}`
             );
             updatedItems[i].price = newPrice;
             hasChanges = true;
