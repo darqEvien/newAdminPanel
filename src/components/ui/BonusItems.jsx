@@ -48,7 +48,14 @@ const BonusItems = ({
   const previousSavedItems = useRef([]); // Track previous items
   const deletedItems = useRef([]);
   const calculateItemPrice = useCallback(
-    (priceFormat, categoryName, productData, kontiWidth, kontiHeight) => {
+    (
+      priceFormat,
+      categoryName,
+      productData,
+      kontiWidth,
+      kontiHeight,
+      itemOriginalDimensions = null
+    ) => {
       // Use current dimensions for calculations
       const basePrice = Number(productData.price || 0);
       const alanPrice = Number(productData.alanPrice || 0);
@@ -60,24 +67,54 @@ const BonusItems = ({
       // Calculate price based on category and format
       if (priceFormat === "artis") {
         if (categoryName.toLowerCase().includes("en")) {
-          // For "en" products, use current dimensions
-          calculatedPrice = productWidth * kontiHeight * basePrice;
+          // For "en" products, always use the ORIGINAL height from when item was added
+          // NOT the current height which might have been changed by boy items
+          const heightToUse =
+            itemOriginalDimensions?.kontiHeight || kontiHeight;
+          calculatedPrice = productWidth * heightToUse * basePrice;
           console.log(
-            `En hesaplama: ${kontiHeight} * ${productWidth} * ${basePrice} = ${calculatedPrice}`
+            `En hesaplama (using height=${heightToUse}): ${heightToUse} * ${productWidth} * ${basePrice} = ${calculatedPrice}`
           );
         } else if (categoryName.toLowerCase().includes("boy")) {
-          // For "boy" products, use current dimensions
-          calculatedPrice = productHeight * kontiWidth * basePrice;
+          // For "boy" products, always use the ORIGINAL width from when item was added
+          // NOT the current width which might have been changed by en items
+          const widthToUse = itemOriginalDimensions?.kontiWidth || kontiWidth;
+          calculatedPrice = productHeight * widthToUse * basePrice;
           console.log(
-            `Boy hesaplama: ${kontiWidth} * ${productHeight} * ${basePrice} = ${calculatedPrice}`
+            `Boy hesaplama (using width=${widthToUse}): ${widthToUse} * ${productHeight} * ${basePrice} = ${calculatedPrice}`
           );
         } else {
-          // Standard increase calculation
+          // Standard increase calculation - other artis cases
           const kontiArea = kontiWidth * kontiHeight;
           const newWidth = Number(kontiWidth) + Number(productWidth);
           const newHeight = Number(kontiHeight) + Number(productHeight);
           const newArea = newWidth * newHeight;
-          calculatedPrice = (newArea - kontiArea) * basePrice;
+
+          // Check if both dimensions are added to avoid double-counting
+          const bothDimensionsAdded = () => {
+            let hasEnArtis = false;
+            let hasBoyArtis = false;
+
+            // Check in saved items
+            for (const item of savedItems) {
+              if (!item.category || item.productId === "istemiyorum") continue;
+
+              if (item.category.toLowerCase().includes("en")) {
+                hasEnArtis = true;
+              } else if (item.category.toLowerCase().includes("boy")) {
+                hasBoyArtis = true;
+              }
+            }
+
+            return hasEnArtis && hasBoyArtis;
+          };
+
+          if (bothDimensionsAdded() && productWidth > 0 && productHeight > 0) {
+            calculatedPrice =
+              (newArea - kontiArea - productWidth * productHeight) * basePrice;
+          } else {
+            calculatedPrice = (newArea - kontiArea) * basePrice;
+          }
         }
       } else if (priceFormat === "metrekare") {
         calculatedPrice = kontiWidth * kontiHeight * basePrice;
@@ -94,8 +131,9 @@ const BonusItems = ({
 
       return calculatedPrice;
     },
-    []
+    [savedItems]
   );
+
   // Store initial dimensions when first mounting
   useEffect(() => {
     if (
@@ -179,21 +217,14 @@ const BonusItems = ({
       // Create deep copy to avoid mutation issues
       const updatedItems = JSON.parse(JSON.stringify(savedItems));
 
-      // Get konti dimensions
-      const kontiWidth = Number(dimensions?.kontiWidth || 0);
-      const kontiHeight = Number(dimensions?.kontiHeight || 0);
-
       // Process all items with dynamic pricing
       for (let i = 0; i < updatedItems.length; i++) {
         const item = updatedItems[i];
         if (item.custom || !item.productId) continue;
-
-        // Skip "istemiyorum" items
         if (item.productId === "istemiyorum") continue;
 
         const categoryName = item.category;
         const productData = products[categoryName]?.[item.productId];
-
         if (!productData) continue;
 
         const category = Object.values(categories).find(
@@ -211,20 +242,33 @@ const BonusItems = ({
         if (!category || !dynamicPriceFormats.includes(category.priceFormat))
           continue;
 
-        // Calculate base price using appropriate dimensions
-        updatedItems[i].price = calculateItemPrice(
-          category.priceFormat,
-          categoryName,
-          productData,
-          kontiWidth,
-          kontiHeight,
-          originalDimensions.current
-        );
+        // For artis categories, use the item's original dimensions
+        if (category.priceFormat === "artis") {
+          updatedItems[i].price = calculateItemPrice(
+            category.priceFormat,
+            categoryName,
+            productData,
+            dimensions.kontiWidth,
+            dimensions.kontiHeight,
+            // Use this item's original dimensions
+            item.originalDimensions
+          );
+        } else {
+          // For other formats, use current dimensions
+          updatedItems[i].price = calculateItemPrice(
+            category.priceFormat,
+            categoryName,
+            productData,
+            dimensions.kontiWidth,
+            dimensions.kontiHeight,
+            null
+          );
+        }
       }
 
       // Only update if prices actually changed
       const hasChanges = updatedItems.some((item, index) => {
-        return savedItems[index]?.price !== item.price;
+        return Math.abs(savedItems[index]?.price - item.price) > 0.1;
       });
 
       if (hasChanges) {
@@ -248,9 +292,8 @@ const BonusItems = ({
     savedItems,
     dimensions,
     setSavedItems,
-    calculateItemPrice, // Add the missing dependency
+    calculateItemPrice,
   ]);
-
   // Function to calculate item price based on format
   const forceRecalculateWithDimensions = useCallback(
     (forcedDimensions) => {
@@ -337,12 +380,6 @@ const BonusItems = ({
     isUpdating.current = true;
 
     try {
-      // Explicitly capture the current dimensions to avoid stale closures
-      const currentDimensions = {
-        kontiWidth: Number(dimensions.kontiWidth),
-        kontiHeight: Number(dimensions.kontiHeight),
-      };
-
       const updatedItems = JSON.parse(JSON.stringify(savedItems)).filter(
         (item) => !deletedItems.current.includes(item.id)
       );
@@ -376,22 +413,58 @@ const BonusItems = ({
         const productData = products[categoryName]?.[item.productId];
         if (!productData) continue;
 
-        // Calculate new price using current dimensions
-        const newPrice = calculateItemPrice(
-          category.priceFormat,
-          categoryName,
-          productData,
-          currentDimensions.kontiWidth,
-          currentDimensions.kontiHeight,
-          null
-        );
+        // CRITICAL CHANGE: For artis categories, use each item's ORIGINAL dimensions
+        // This prevents recalculation of existing items when new dimensions are added
+        if (category.priceFormat === "artis") {
+          // Get dimensions that existed when this item was added
+          const originalDimensions =
+            item.originalDimensions || originalDimensions.current;
+          if (!originalDimensions) {
+            console.warn(
+              `No original dimensions found for item ${item.id}. Using current dimensions.`
+            );
+          }
 
-        if (Math.abs(newPrice - item.price) > 0.1) {
-          console.log(
-            `Recalculating ${categoryName} (${category.priceFormat}) price: ${item.price} -> ${newPrice}, using dimensions: width=${currentDimensions.kontiWidth}, height=${currentDimensions.kontiHeight}`
+          // Calculate price using original dimensions for this specific item
+          const newPrice = calculateItemPrice(
+            "artis",
+            categoryName,
+            productData,
+            dimensions.kontiWidth, // We still pass current width
+            dimensions.kontiHeight, // We still pass current height
+            originalDimensions // But the calculation will use these for en/boy
           );
-          updatedItems[i].price = newPrice;
-          hasChanges = true;
+
+          if (Math.abs(newPrice - item.price) > 0.1) {
+            console.log(
+              `Recalculating ${categoryName} (${category.priceFormat}) price: ${
+                item.price
+              } -> ${newPrice}, using item's original dimensions: ${JSON.stringify(
+                originalDimensions
+              )}`
+            );
+            updatedItems[i].price = newPrice;
+            hasChanges = true;
+          }
+        }
+        // For non-artis dynamic formats, always use current dimensions
+        else {
+          const newPrice = calculateItemPrice(
+            category.priceFormat,
+            categoryName,
+            productData,
+            dimensions.kontiWidth,
+            dimensions.kontiHeight,
+            null // No need for original dimensions here
+          );
+
+          if (Math.abs(newPrice - item.price) > 0.1) {
+            console.log(
+              `Recalculating ${categoryName} (${category.priceFormat}) price: ${item.price} -> ${newPrice} (dynamic non-artis)`
+            );
+            updatedItems[i].price = newPrice;
+            hasChanges = true;
+          }
         }
       }
 
@@ -412,6 +485,7 @@ const BonusItems = ({
     savedItems,
     setSavedItems,
     calculateItemPrice,
+    originalDimensions,
   ]);
   // Handle dimension changes and recalculate prices
   useEffect(() => {
@@ -462,30 +536,23 @@ const BonusItems = ({
   ]);
 
   // Function to handle recalculation of prices after dimension changes
+  // Function to handle recalculation of prices after dimension changes
   const recalculateAllArtisItems = useCallback(() => {
     if (isUpdating.current) return;
     isUpdating.current = true;
 
     try {
-      // Explicitly capture the current dimensions to avoid stale closures
-      const currentDimensions = {
-        kontiWidth: Number(dimensions.kontiWidth),
-        kontiHeight: Number(dimensions.kontiHeight),
-      };
-
       const updatedItems = JSON.parse(JSON.stringify(savedItems)).filter(
         (item) => !deletedItems.current.includes(item.id)
       );
 
       let hasChanges = false;
 
-      // Check if we have both En and Boy items
-
-      // Recalculate all dimension-dependent items with current dimensions
+      // Recalculate all artis items with their own original dimensions
       for (let i = 0; i < updatedItems.length; i++) {
         const item = updatedItems[i];
-        if (item.custom || !item.productId) continue;
-        if (item.productId === "istemiyorum") continue;
+        if (item.custom || !item.productId || item.productId === "istemiyorum")
+          continue;
 
         const categoryName = item.category;
         if (
@@ -505,19 +572,24 @@ const BonusItems = ({
         const productData = products[categoryName]?.[item.productId];
         if (!productData) continue;
 
-        // Use explicitly captured current dimensions
+        // Use item's own original dimensions for calculation
         const newPrice = calculateItemPrice(
           "artis",
           categoryName,
           productData,
-          currentDimensions.kontiWidth, // Use explicit current value
-          currentDimensions.kontiHeight, // Use explicit current value
-          null // Don't pass original dimensions
+          dimensions.kontiWidth,
+          dimensions.kontiHeight,
+          // Use this item's specific original dimensions
+          item.originalDimensions
         );
 
         if (Math.abs(newPrice - item.price) > 0.1) {
           console.log(
-            `Recalculating ${categoryName} price: ${item.price} -> ${newPrice}, using dimensions: width=${currentDimensions.kontiWidth}, height=${currentDimensions.kontiHeight}`
+            `Recalculating ${categoryName} price: ${
+              item.price
+            } -> ${newPrice}, using item's original dimensions: ${JSON.stringify(
+              item.originalDimensions
+            )}`
           );
           updatedItems[i].price = newPrice;
           hasChanges = true;
@@ -790,7 +862,7 @@ const BonusItems = ({
         (cat) => cat.propertyName?.toLowerCase() === categoryName?.toLowerCase()
       );
 
-      // Sadece artis kategorisi için boyutları güncelle
+      // Only update dimensions for artis category
       if (category?.priceFormat !== "artis") return;
 
       const productData = products[categoryName]?.[item.productId];
@@ -874,6 +946,12 @@ const BonusItems = ({
       return; // Validation
     }
 
+    // Get the current dimensions BEFORE any changes
+    const currentDimensions = {
+      kontiWidth: dimensions.kontiWidth,
+      kontiHeight: dimensions.kontiHeight,
+    };
+
     const itemToAdd = {
       id: Date.now().toString(),
       category: newItem.category,
@@ -881,21 +959,24 @@ const BonusItems = ({
       productId: newItem.custom ? null : newItem.productId,
       price: Number(newItem.price),
       custom: newItem.custom,
+      // Store current dimensions with each item when added - VERY IMPORTANT
+      // This is like "freezing" the dimensions at the moment of addition
+      originalDimensions: currentDimensions,
     };
 
-    // Update konti dimensions if needed
-    if (!itemToAdd.custom && itemToAdd.productId) {
-      updateKontiDimensionsFunc(itemToAdd, "add");
+    console.log(
+      `Adding new item with original dimensions stored: `,
+      currentDimensions
+    );
 
-      // If adding an en/boy item, recalculate prices for all dimension-dependent items
-      if (
-        itemToAdd.category.toLowerCase().includes("en") ||
-        itemToAdd.category.toLowerCase().includes("boy")
-      ) {
-        setTimeout(() => {
-          recalculateAllArtisItems();
-        }, 150);
-      }
+    // Update konti dimensions if needed
+    if (
+      !itemToAdd.custom &&
+      itemToAdd.productId &&
+      itemToAdd.productId !== "istemiyorum"
+    ) {
+      // Update dimensions in the store - this will trigger recalculation
+      updateKontiDimensionsFunc(itemToAdd, "add");
     }
 
     setSavedItems((prev) => [...prev, itemToAdd]);
@@ -908,12 +989,8 @@ const BonusItems = ({
       name: "",
     });
     setAdding(false);
-  }, [
-    newItem,
-    setSavedItems,
-    updateKontiDimensionsFunc,
-    recalculateAllArtisItems,
-  ]);
+  }, [newItem, dimensions, setSavedItems, updateKontiDimensionsFunc]);
+
   // Cancel adding new item
   const handleCancelAdd = useCallback(() => {
     setNewItem({

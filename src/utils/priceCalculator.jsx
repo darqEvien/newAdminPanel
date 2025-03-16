@@ -6,6 +6,8 @@ export const calculateArtisPrice = ({
   kontiWidth,
   kontiHeight,
   basePrice,
+  // Add a parameter to track if we've already added both dimensions
+  hasAddedBothDimensions = false,
   alanPrice = 0,
 }) => {
   // En kategorisi için
@@ -16,10 +18,9 @@ export const calculateArtisPrice = ({
   // Boy kategorisi için
   else if (categoryName.toLowerCase().includes("boy")) {
     const calculatedPrice = kontiWidth * productHeight * basePrice;
-
     return calculatedPrice;
   }
-  // Diğer artis kategorileri için
+  // Diğer artis kategorileri için (currently not used, but kept for completeness)
   else {
     // Burada normal artis hesaplamasını yapabiliriz veya null döndürebiliriz
     return null;
@@ -37,6 +38,8 @@ export const calculatePrice = ({
   anaWidth = 0,
   anaHeight = 0,
   categoryName = "",
+  // Add a parameter to track if we've already added both dimensions
+  hasAddedBothDimensions = false,
 }) => {
   // Move all declarations outside switch
   let area = 0;
@@ -74,8 +77,16 @@ export const calculatePrice = ({
         newWidth = Number(kontiWidth) + Number(width);
         newHeight = Number(kontiHeight) + Number(height);
         newArea = newWidth * newHeight;
-        return (newArea - kontiArea) * Number(basePrice);
+
+        // For area difference calculation, account for corner overlaps
+        if (hasAddedBothDimensions && width > 0 && height > 0) {
+          // Don't double count the corner area when both dimensions are added
+          return (newArea - kontiArea - width * height) * Number(basePrice);
+        } else {
+          return (newArea - kontiArea) * Number(basePrice);
+        }
       }
+
     case "tasDuvar": {
       const area = kontiHeight * kontiWidth;
       const cevre = 2 * (kontiHeight + kontiWidth);
@@ -96,11 +107,13 @@ export const calculatePrice = ({
 
     case "extra":
       return Number(basePrice);
+
     case "bugOnleme":
       return (
         Number(basePrice) *
         Number(anaHeight + anaWidth + artisArea + kontiTotalArea + ratio)
       );
+
     default:
       return Number(basePrice);
   }
@@ -117,4 +130,34 @@ export const isKontiCategory = (category) => {
   return (
     category?.propertyName === "konti" || category?.priceFormat === "konti"
   );
+};
+
+/**
+ * Check if both width and height dimensions have been added
+ * This helps prevent double-counting corner areas
+ */
+export const checkBothDimensionsAdded = (orderData) => {
+  let hasEnArtis = false;
+  let hasBoyArtis = false;
+
+  // Check both main order and bonus items
+  for (const categoryName in orderData) {
+    if (typeof orderData[categoryName] !== "object") continue;
+
+    if (
+      categoryName.toLowerCase().includes("en") &&
+      orderData[categoryName].some((item) => item.productId !== "istemiyorum")
+    ) {
+      hasEnArtis = true;
+    }
+
+    if (
+      categoryName.toLowerCase().includes("boy") &&
+      orderData[categoryName].some((item) => item.productId !== "istemiyorum")
+    ) {
+      hasBoyArtis = true;
+    }
+  }
+
+  return hasEnArtis && hasBoyArtis;
 };

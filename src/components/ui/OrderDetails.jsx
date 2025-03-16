@@ -16,6 +16,7 @@ const OrderDetails = ({
   setLocalOrderData,
   shouldRecalc = false,
   setShouldRecalcPrices = () => {},
+  skipInitialCalc = false,
 }) => {
   // Zustand store'dan değerleri al
   const kontiWidth = useDimensionsStore((state) => state.kontiWidth);
@@ -49,7 +50,14 @@ const OrderDetails = ({
 
   // Dinamik fiyatları hesaplama fonksiyonu - tüm dinamik fiyat formatlarını destekler
   const recalculatePrices = useCallback(() => {
-    if (isUpdating.current || !Object.keys(localOrderData).length) return;
+    // İlk yüklemede ve skipInitialCalc true ise hesaplamayı atla
+    if (
+      skipInitialCalc ||
+      isUpdating.current ||
+      !Object.keys(localOrderData).length
+    )
+      return;
+
     isUpdating.current = true;
 
     try {
@@ -101,6 +109,14 @@ const OrderDetails = ({
         for (const idx in updatedOrderData[categoryName]) {
           const product = updatedOrderData[categoryName][idx];
 
+          // Ürünün orijinal boyutlarını saklamasını sağlayalım
+          if (priceFormat === "artis" && !product.originalDimensions) {
+            product.originalDimensions = {
+              kontiWidth: Number(dimensions.kontiWidth),
+              kontiHeight: Number(dimensions.kontiHeight),
+            };
+          }
+
           // İstemiyorum veya geçersiz ürünleri atla
           if (
             !product.productCollectionId ||
@@ -121,6 +137,49 @@ const OrderDetails = ({
           );
 
           let newPrice = 0;
+
+          // Check if both en and boy artis products exist
+          const hasBothEnAndBoyArtis = () => {
+            let hasEnArtis = false;
+            let hasBoyArtis = false;
+
+            for (const catName in updatedOrderData) {
+              if (typeof updatedOrderData[catName] !== "object") continue;
+
+              const category = Object.values(categories).find(
+                (cat) =>
+                  cat.propertyName?.toLowerCase() === catName.toLowerCase()
+              );
+
+              if (category?.priceFormat === "artis") {
+                if (catName.toLowerCase().includes("en")) {
+                  for (const idx in updatedOrderData[catName]) {
+                    const product = updatedOrderData[catName][idx];
+                    if (
+                      product.productId &&
+                      product.productId !== "istemiyorum"
+                    ) {
+                      hasEnArtis = true;
+                    }
+                  }
+                } else if (catName.toLowerCase().includes("boy")) {
+                  for (const idx in updatedOrderData[catName]) {
+                    const product = updatedOrderData[catName][idx];
+                    if (
+                      product.productId &&
+                      product.productId !== "istemiyorum"
+                    ) {
+                      hasBoyArtis = true;
+                    }
+                  }
+                }
+              }
+            }
+
+            return hasEnArtis && hasBoyArtis;
+          };
+
+          const bothDimensionsAdded = hasBothEnAndBoyArtis();
 
           // Formata göre fiyat hesaplama
           switch (priceFormat) {
@@ -149,11 +208,21 @@ const OrderDetails = ({
             case "artis":
               // Artis kategorisine göre özel hesaplama
               if (categoryName.toLowerCase().includes("en")) {
-                // En artis: konti yüksekliği * ürün genişliği * birim fiyat
-                newPrice = kontiHeight * productWidth * basePrice;
+                // En artis: ORIJINAL konti yüksekliği * ürün genişliği * birim fiyat
+                const heightToUse =
+                  product.originalDimensions?.kontiHeight || kontiHeight;
+                newPrice = heightToUse * productWidth * basePrice;
+                console.log(
+                  `OrderDetails - En hesaplama: ${heightToUse} * ${productWidth} * ${basePrice} = ${newPrice} (using original height)`
+                );
               } else if (categoryName.toLowerCase().includes("boy")) {
-                // Boy artis: konti genişliği * ürün yüksekliği * birim fiyat
-                newPrice = kontiWidth * productHeight * basePrice;
+                // Boy artis: ORIJINAL konti genişliği * ürün yüksekliği * birim fiyat
+                const widthToUse =
+                  product.originalDimensions?.kontiWidth || kontiWidth;
+                newPrice = widthToUse * productHeight * basePrice;
+                console.log(
+                  `OrderDetails - Boy hesaplama: ${widthToUse} * ${productHeight} * ${basePrice} = ${newPrice} (using original width)`
+                );
               } else {
                 // Diğer artis durumları için calculatePrice kullan
                 newPrice = calculatePrice({
@@ -167,6 +236,7 @@ const OrderDetails = ({
                   anaWidth,
                   anaHeight,
                   alanPrice,
+                  hasAddedBothDimensions: bothDimensionsAdded,
                 });
               }
               break;
@@ -215,8 +285,8 @@ const OrderDetails = ({
     anaHeight,
     localOrderData,
     setLocalOrderData,
+    skipInitialCalc, // Yeni bağımlılık
   ]);
-
   // Add this function after recalculatePrices
 
   // 1. Boyutları başlangıçta ayarla (sadece bir kez)
@@ -518,17 +588,33 @@ const OrderDetails = ({
           // Fiyat hesapla
           let calculatedPrice = 0;
 
+          // ÖNEMLİ: Ürün eklendiği andaki boyutları saklayacağız
+          const originalDimensions = {
+            kontiWidth: currentKontiWidth,
+            kontiHeight: currentKontiHeight,
+          };
+
           if (!isRemoving) {
             if (categoryName.toLowerCase().includes("en")) {
+              // En artis için MEVCUT yüksekliği kullanıyoruz (boy henüz etkilemedi)
               calculatedPrice =
                 currentKontiHeight *
                 newWidth *
                 Number(productData?.price || basePrice);
+
+              console.log(
+                `OrderDetails - En ürünü ekleniyor. Fiyat hesabı: ${currentKontiHeight} * ${newWidth} * ${basePrice} = ${calculatedPrice}`
+              );
             } else if (categoryName.toLowerCase().includes("boy")) {
+              // Boy artis için MEVCUT genişliği kullanıyoruz (en artis etkilediyse o değeri)
               calculatedPrice =
                 currentKontiWidth *
                 newHeight *
                 Number(productData?.price || basePrice);
+
+              console.log(
+                `OrderDetails - Boy ürünü ekleniyor. Fiyat hesabı: ${currentKontiWidth} * ${newHeight} * ${basePrice} = ${calculatedPrice}`
+              );
             }
           }
 
@@ -558,6 +644,8 @@ const OrderDetails = ({
                 productCollectionId: selectedProduct.id,
                 width: isRemoving ? 0 : newWidth,
                 height: isRemoving ? 0 : newHeight,
+                // ÖNEMLİ: Orijinal boyutları kaydedelim
+                originalDimensions: isRemoving ? undefined : originalDimensions,
               },
             },
           }));
@@ -722,11 +810,17 @@ const OrderDetails = ({
 
         if (categoryName.toLowerCase().includes("en") && currentWidth > 0) {
           updatedWidth = Math.max(0, dimensions.kontiWidth - currentWidth);
+          console.log(
+            `OrderDetails - En ürünü siliniyor. Yeni genişlik: ${updatedWidth}`
+          );
         } else if (
           categoryName.toLowerCase().includes("boy") &&
           currentHeight > 0
         ) {
           updatedHeight = Math.max(0, dimensions.kontiHeight - currentHeight);
+          console.log(
+            `OrderDetails - Boy ürünü siliniyor. Yeni yükseklik: ${updatedHeight}`
+          );
         }
 
         const dimensionsChanged =
@@ -961,6 +1055,7 @@ OrderDetails.propTypes = {
   setLocalOrderData: PropTypes.func.isRequired,
   shouldRecalc: PropTypes.bool,
   setShouldRecalcPrices: PropTypes.func,
+  skipInitialCalc: PropTypes.bool,
 };
 
 export default OrderDetails;

@@ -149,6 +149,58 @@ const OrderEditModal = ({
           return null;
         };
 
+        // Add this function before processing the categories:
+        const checkBothDimensionsAdded = () => {
+          let hasEnArtis = false;
+          let hasBoyArtis = false;
+
+          for (const categoryName in updatedOrderData) {
+            if (
+              typeof updatedOrderData[categoryName] !== "object" ||
+              [
+                "status",
+                "verandaWidth",
+                "verandaHeight",
+                "dimensions",
+                "kontiWidth",
+                "kontiHeight",
+                "notes",
+              ].includes(categoryName)
+            ) {
+              continue;
+            }
+
+            const category = findCategoryByPropertyName(categoryName);
+            if (category?.priceFormat === "artis") {
+              if (categoryName.toLowerCase().includes("en")) {
+                for (const idx in updatedOrderData[categoryName]) {
+                  const product = updatedOrderData[categoryName][idx];
+                  if (
+                    product.productId &&
+                    product.productId !== "istemiyorum"
+                  ) {
+                    hasEnArtis = true;
+                  }
+                }
+              } else if (categoryName.toLowerCase().includes("boy")) {
+                for (const idx in updatedOrderData[categoryName]) {
+                  const product = updatedOrderData[categoryName][idx];
+                  if (
+                    product.productId &&
+                    product.productId !== "istemiyorum"
+                  ) {
+                    hasBoyArtis = true;
+                  }
+                }
+              }
+            }
+          }
+
+          return hasEnArtis && hasBoyArtis;
+        };
+
+        const bothDimensionsAdded = checkBothDimensionsAdded();
+
         // Ana kategorileri işle
         const categoryPromises = Object.entries(updatedOrderData).map(
           ([categoryName, categoryProducts], categoryIndex) =>
@@ -246,6 +298,7 @@ const OrderEditModal = ({
                                     anaWidth: currentAnaWidth,
                                     anaHeight: currentAnaHeight,
                                     alanPrice: productData?.alanPrice || 0,
+                                    hasAddedBothDimensions: bothDimensionsAdded,
                                   });
                                 }
                               } else {
