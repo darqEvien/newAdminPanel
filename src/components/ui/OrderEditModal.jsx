@@ -10,6 +10,8 @@ import OrderSummary from "./OrderSummary";
 import CustomerInfo from "./CustomerInfo";
 import PropTypes from "prop-types";
 import { calculatePrice } from "../../utils/priceCalculator";
+import { useDimensionsStore } from "../../store/dimensionsStore"; // Import as named export
+
 const OrderEditModal = ({
   isOpen,
   onClose,
@@ -17,57 +19,52 @@ const OrderEditModal = ({
   orderKey,
   orderData,
   initialDimensions,
-  isMainOrder = true, // Default to true for backward compatibility
-  customerId = null, // This should be passed from CustomerDetailModal
+  isMainOrder = true,
+  customerId = null,
 }) => {
+  // Use individual selectors for better performance
+  const kontiWidth = useDimensionsStore((state) => state.kontiWidth);
+  const kontiHeight = useDimensionsStore((state) => state.kontiHeight);
+  const anaWidth = useDimensionsStore((state) => state.anaWidth);
+  const anaHeight = useDimensionsStore((state) => state.anaHeight);
+  const initializeDimensions = useDimensionsStore(
+    (state) => state.initializeDimensions
+  );
+  const getAllDimensions = useDimensionsStore(
+    (state) => state.getAllDimensions
+  );
+
   // Ana state'ler
   const [categories, setCategories] = useState({});
   const [products, setProducts] = useState({});
   const [localOrderData, setLocalOrderData] = useState(orderData);
-  const [dimensions, setDimensions] = useState({
-    kontiWidth: Number(initialDimensions?.kontiWidth || 0),
-    kontiHeight: Number(initialDimensions?.kontiHeight || 0),
-    anaWidth: Number(initialDimensions?.anaWidth || 0),
-    anaHeight: Number(initialDimensions?.anaHeight || 0),
-    verandaWidth: initialDimensions?.verandaWidth || "Seçilmedi",
-    verandaHeight: initialDimensions?.verandaHeight || "Seçilmedi",
-    length: Number(initialDimensions?.length || 0),
-  });
-  useEffect(() => {
-    setDimensions((prev) => ({
-      ...prev,
-      kontiWidth: Number(prev.kontiWidth) || 0,
-      kontiHeight: Number(prev.kontiHeight) || 0,
-      length: Number(prev.length) || 0,
-    }));
-  }, [localOrderData]);
-  // Sol taraf için state'ler (OrderDetails)
-  const [editingItem, setEditingItem] = useState(null);
-  const [editingValues, setEditingValues] = useState({ name: "", price: "" });
-  const [selectedProduct, setSelectedProduct] = useState(null);
-  const [notes] = useState(orderData.notes || ""); // Add notes state
-  // Sağ taraf için state'ler (BonusItems)
   const [savedItems, setSavedItems] = useState([]);
-  const [editingSavedItem, setEditingSavedItem] = useState(null);
-  const [editingSavedValues, setEditingSavedValues] = useState({
-    category: "",
-    product: "",
-    price: "",
-    priceOnly: false,
-  });
-  const [newItems, setNewItems] = useState([
-    { category: "", product: "", price: "" },
-  ]);
-  const [shouldRecalcPrices, setShouldRecalcPrices] = useState(false); // Yeni state
-  const hasMounted = useRef(false); // Bileşenin mount olup olmadığını izlemek için
+  const [notes, setNotes] = useState(orderData.notes || "");
+  const [shouldRecalcPrices, setShouldRecalcPrices] = useState(false);
 
-  // Initial data fetch
+  // OrderDetails state'leri
+  const [editingItem, setEditingItem] = useState(null);
+  const [selectedProduct, setSelectedProduct] = useState(null);
+  const [editingValues, setEditingValues] = useState({ name: "", price: "0" });
+
+  // İkisi arasında bağlantı kurmak için useCallback ve useState ekleyin
+
+  // İlk veri yüklemesi
   useEffect(() => {
     const fetchInitialData = async () => {
+      if (!isOpen) return;
+
       try {
-        const [categoriesSnapshot, productsSnapshot] = await Promise.all([
+        const [
+          categoriesSnapshot,
+          productsSnapshot,
+          bonusSnapshot,
+          notesSnapshot,
+        ] = await Promise.all([
           get(ref(database, "categories")),
           get(ref(database, "products")),
+          get(ref(database, `customers/${orderKey}/bonus`)),
+          get(ref(database, `customers/${orderKey}/notes`)),
         ]);
 
         if (categoriesSnapshot.exists()) {
@@ -76,68 +73,70 @@ const OrderEditModal = ({
         if (productsSnapshot.exists()) {
           setProducts(productsSnapshot.val());
         }
+        if (bonusSnapshot.exists()) {
+          setSavedItems(bonusSnapshot.val() || []);
+        }
+        if (notesSnapshot.exists()) {
+          setNotes(notesSnapshot.val() || "");
+        }
       } catch (error) {
         console.error("Error fetching initial data:", error);
       }
     };
 
     fetchInitialData();
-  }, []);
+  }, [isOpen, orderKey]);
+
+  // İlk yüklemede dimensions'ı Zustand store'una aktar
+  const initializedRef = useRef(false);
+
   useEffect(() => {
-    if (isOpen && initialDimensions) {
-      const dimensionsToSet = {
-        kontiWidth: Number(initialDimensions?.kontiWidth || 0),
-        kontiHeight: Number(initialDimensions?.kontiHeight || 0),
-        anaWidth: Number(initialDimensions?.anaWidth || 0),
-        anaHeight: Number(initialDimensions?.anaHeight || 0),
-        verandaWidth: initialDimensions?.verandaWidth || "Seçilmedi",
-        verandaHeight: initialDimensions?.verandaHeight || "Seçilmedi",
-        length: Number(initialDimensions?.length || 0),
-      };
-      setDimensions(dimensionsToSet);
-      // Also make sure localOrderData has dimensions
+    if (isOpen && initialDimensions && !initializedRef.current) {
+      console.log(
+        "Initializing dimensions from initialDimensions:",
+        initialDimensions
+      );
+      initializeDimensions(initialDimensions);
+      initializedRef.current = true;
+
+      // LocalOrderData'yı da güncelle
       setLocalOrderData((prev) => ({
         ...prev,
-        dimensions: dimensionsToSet,
+        dimensions: initialDimensions,
       }));
     }
-  }, [isOpen, initialDimensions, setLocalOrderData]);
-  // Ana kaydetme fonksiyonu
-  const handleSaveChanges = async () => {
-    try {
-      await Promise.all([
-        set(ref(database, `customers/${orderKey}/products/0`), localOrderData),
-        set(ref(database, `customers/${orderKey}/bonus`), savedItems),
-        set(ref(database, `customers/${orderKey}/notes`), notes), // Save notes
-      ]);
-      onClose();
-    } catch (error) {
-      console.error("Error saving changes:", error);
-    }
-  };
-  useEffect(() => {
-    if (isOpen) {
-      setShouldRecalcPrices(false);
-    }
-  }, [isOpen]);
+  }, [isOpen, initialDimensions, initializeDimensions]);
+
   // Fiyatları yenileme fonksiyonu
   const handleRefreshPrices = async () => {
     try {
-      // İşlem başladığını kullanıcıya bildir
       const loadingToast = toast.loading("Fiyatlar güncelleniyor...");
       setShouldRecalcPrices(true);
-      // Kategorileri veritabanından yeniden alalım ve güncelleyelim
+
+      // Kategorileri yenile
       const categoriesSnapshot = await get(ref(database, "categories"));
       if (!categoriesSnapshot.exists()) {
-        console.error("Kategoriler veritabanında bulunamadı!");
         toast.error("Kategori bilgileri yüklenemedi!");
         return;
       }
 
+      setCategories(categoriesSnapshot.val());
       const updatedCategories = categoriesSnapshot.val();
-      setCategories(updatedCategories);
 
       setTimeout(async () => {
+        // Güncel konti boyutlarını al
+        const currentKontiWidth = kontiWidth;
+        const currentKontiHeight = kontiHeight;
+        const currentAnaWidth = anaWidth;
+        const currentAnaHeight = anaHeight;
+
+        console.log("Fiyat hesaplamada kullanılan boyutlar:", {
+          kontiWidth: currentKontiWidth,
+          kontiHeight: currentKontiHeight,
+          anaWidth: currentAnaWidth,
+          anaHeight: currentAnaHeight,
+        });
+
         const updatedOrderData = { ...localOrderData };
 
         // PropertyName'e göre kategori bulma fonksiyonu
@@ -150,14 +149,13 @@ const OrderEditModal = ({
           return null;
         };
 
-        // Ana kategorileri işlemek için Promise dizisi
+        // Ana kategorileri işle
         const categoryPromises = Object.entries(updatedOrderData).map(
           ([categoryName, categoryProducts], categoryIndex) =>
             new Promise((resolve) => {
-              // Her kategori işlemesi arasında 0.5ms gecikme ekle
               setTimeout(async () => {
                 try {
-                  // Sadece object olan ve özel alanlar olmayan kategorileri işle
+                  // Özel alanları atla
                   if (
                     typeof categoryProducts !== "object" ||
                     [
@@ -174,36 +172,25 @@ const OrderEditModal = ({
                     return;
                   }
 
-                  // Kategorinin priceFormat değerini bul
-                  let categoryPriceFormat = "tekil"; // Varsayılan değer
+                  // Kategori priceFormat'ını bul
+                  let categoryPriceFormat = "tekil";
                   const matchingCategory =
                     findCategoryByPropertyName(categoryName);
 
                   if (matchingCategory && matchingCategory.priceFormat) {
                     categoryPriceFormat = matchingCategory.priceFormat;
-                    console.log(
-                      `✓ Kategori ${categoryName} için priceFormat: ${categoryPriceFormat}`
-                    );
                   } else if (
                     updatedCategories[categoryName] &&
                     updatedCategories[categoryName].priceFormat
                   ) {
                     categoryPriceFormat =
                       updatedCategories[categoryName].priceFormat;
-                    console.log(
-                      `✓ Kategori ${categoryName} için priceFormat: ${categoryPriceFormat}`
-                    );
-                  } else {
-                    console.warn(
-                      `⚠️ Kategori ${categoryName} için priceFormat bulunamadı, tekil kullanılıyor`
-                    );
                   }
 
-                  // Kategorideki ürünleri işlemek için Promise dizisi
+                  // Kategorideki ürünleri işle
                   const productPromises = Object.entries(categoryProducts).map(
                     ([productIndex, product], pIndex) =>
                       new Promise((resolveProduct) => {
-                        // Her ürün işlemesi arasında 0.5ms gecikme ekle
                         setTimeout(async () => {
                           try {
                             if (!product.productCollectionId) {
@@ -223,68 +210,59 @@ const OrderEditModal = ({
                                 productData.price || product.price
                               );
 
-                              // Width ve height değerlerini sayıya çevir
+                              // Width ve height değerleri
                               const productWidth = Number(
                                 productData.width || 0
                               );
                               const productHeight = Number(
                                 productData.height || 0
                               );
-                              const kontiWidth = Number(
-                                dimensions.kontiWidth || 0
-                              );
-                              const kontiHeight = Number(
-                                dimensions.kontiHeight || 0
-                              );
-                              const anaWidth = Number(dimensions.anaWidth || 0); // Konti değerleri ana değerler olarak kullan
-                              const anaHeight = Number(
-                                dimensions.anaHeight || 0
-                              ); // Konti değerleri ana değerler olarak kullan
 
                               let calculatedPrice;
 
                               // Artis kategorisi için özel hesaplama
                               if (categoryPriceFormat === "artis") {
-                                const currentWidth = anaWidth;
-                                const currentHeight = anaHeight;
-                                const newWidth = Number(
-                                  productData?.width || 0
-                                );
-                                const newHeight = Number(
-                                  productData?.height || 0
-                                );
-                                const totalWidth = currentWidth + newWidth;
-                                const totalHeight = currentHeight + newHeight;
-                                const newArea = totalWidth * totalHeight;
-                                const anaArea = currentWidth * currentHeight;
-
-                                const calculatedPrice = calculatePrice({
-                                  priceFormat: "artis",
-                                  basePrice: Number(selectedProduct.price),
-                                  width: newWidth,
-                                  height: newHeight,
-                                  kontiWidth: currentWidth, // Mevcut konti boyutlarını kullan
-                                  kontiHeight: currentHeight, // Mevcut konti boyutlarını kullan
-                                });
+                                if (categoryName.toLowerCase().includes("en")) {
+                                  calculatedPrice =
+                                    currentKontiHeight *
+                                    productWidth *
+                                    basePrice;
+                                } else if (
+                                  categoryName.toLowerCase().includes("boy")
+                                ) {
+                                  calculatedPrice =
+                                    currentKontiWidth *
+                                    productHeight *
+                                    basePrice;
+                                } else {
+                                  calculatedPrice = calculatePrice({
+                                    priceFormat: "artis",
+                                    basePrice: basePrice,
+                                    width: productWidth,
+                                    height: productHeight,
+                                    kontiWidth: currentKontiWidth,
+                                    kontiHeight: currentKontiHeight,
+                                    categoryName: categoryName,
+                                    anaWidth: currentAnaWidth,
+                                    anaHeight: currentAnaHeight,
+                                    alanPrice: productData?.alanPrice || 0,
+                                  });
+                                }
                               } else {
-                                // Diğer kategoriler için normal hesaplama
+                                // Diğer kategoriler için hesaplama
                                 calculatedPrice = calculatePrice({
                                   priceFormat: categoryPriceFormat,
                                   basePrice: basePrice,
                                   width: productWidth,
                                   height: productHeight,
-                                  kontiWidth: kontiWidth,
-                                  kontiHeight: kontiHeight,
+                                  kontiWidth: currentKontiWidth,
+                                  kontiHeight: currentKontiHeight,
                                   categoryName: categoryName,
-                                  anaWidth: anaWidth,
-                                  anaHeight: anaHeight,
+                                  anaWidth: currentAnaWidth,
+                                  anaHeight: currentAnaHeight,
                                   alanPrice: productData?.alanPrice || 0,
                                 });
                               }
-
-                              console.log(
-                                `Ürün: ${productData.name}, Fiyat: ${basePrice}, Hesaplanan: ${calculatedPrice}`
-                              );
 
                               // Fiyatı güncelle
                               updatedOrderData[categoryName][productIndex] = {
@@ -295,49 +273,69 @@ const OrderEditModal = ({
                             resolveProduct();
                           } catch (error) {
                             console.error(
-                              `${categoryName} ürün fiyatı güncellenirken hata:`,
+                              `Ürün fiyatı güncellenirken hata:`,
                               error
                             );
                             resolveProduct();
                           }
-                        }, pIndex * 0.5); // Her ürün arasında 0.5ms gecikme
+                        }, pIndex * 0.5);
                       })
                   );
 
-                  // Kategori içindeki tüm ürünlerin işlenmesini bekle
+                  // Tüm ürünleri işle
                   await Promise.all(productPromises);
                   resolve();
                 } catch (error) {
-                  console.error(
-                    `Kategori ${categoryName} işlenirken hata:`,
-                    error
-                  );
+                  console.error(`Kategori işlenirken hata:`, error);
                   resolve();
                 }
-              }, categoryIndex * 0.5); // Her kategori arasında 0.5ms gecikme
+              }, categoryIndex * 0.5);
             })
         );
 
-        // Tüm kategorilerin işlenmesini bekle
+        // Tüm kategorileri işle
         await Promise.all(categoryPromises);
-
-        // Bonus ürünlerin fiyatlarını güncelle
 
         // State'leri güncelle
         setLocalOrderData(updatedOrderData);
-
         setShouldRecalcPrices(false);
-        // İşlem tamamlandı bildirimi
+
+        // Tamamlama bildirimi
         toast.dismiss(loadingToast);
         toast.success("Ürün fiyatları başarıyla güncellendi");
       }, 300);
-      // Ana ürünlerin fiyatlarını güncelle
     } catch (error) {
       console.error("Fiyat güncellemesi sırasında hata:", error);
       toast.error("Fiyat güncellemesi sırasında bir hata oluştu");
       setShouldRecalcPrices(false);
     }
   };
+
+  // Ana kaydetme fonksiyonu
+  const handleSaveChanges = async () => {
+    try {
+      // Güncel boyutları al
+      const currentDimensions = getAllDimensions();
+
+      // Kaydet
+      const finalOrderData = {
+        ...localOrderData,
+        dimensions: currentDimensions,
+      };
+
+      await Promise.all([
+        set(ref(database, `customers/${orderKey}/products/0`), finalOrderData),
+        set(ref(database, `customers/${orderKey}/bonus`), savedItems),
+        set(ref(database, `customers/${orderKey}/notes`), notes),
+      ]);
+
+      onClose();
+    } catch (error) {
+      console.error("Error saving changes:", error);
+      toast.error("Değişiklikler kaydedilirken bir hata oluştu.");
+    }
+  };
+
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="max-w-[90vw] w-[90vw] h-[85vh] max-h-[85vh] p-0 flex flex-col bg-gray-900">
@@ -443,10 +441,8 @@ const OrderEditModal = ({
                         setSelectedProduct={setSelectedProduct}
                         setEditingValues={setEditingValues}
                         setLocalOrderData={setLocalOrderData}
-                        orderKey={orderKey}
-                        dimensions={dimensions}
-                        setDimensions={setDimensions}
                         shouldRecalc={shouldRecalcPrices}
+                        setShouldRecalcPrices={setShouldRecalcPrices}
                       />
                     </div>
 
@@ -461,9 +457,8 @@ const OrderEditModal = ({
                           products={products}
                           savedItems={savedItems}
                           setSavedItems={setSavedItems}
-                          dimensions={dimensions}
-                          setDimensions={setDimensions}
                           shouldRecalc={shouldRecalcPrices}
+                          setShouldRecalcPrices={setShouldRecalcPrices}
                         />
                       </div>
                     </div>
@@ -472,15 +467,16 @@ const OrderEditModal = ({
               </div>
             </div>
 
-            {/* Right Panel - Split into two sections */}
+            {/* Right Panel */}
             <div className="w-[300px] flex flex-col h-full bg-gray-800/30 border-l border-gray-700">
-              {/* Notes Section */}
               <div className="flex flex-col h-full">
                 <div className="flex-1 overflow-y-auto p-3">
                   <OrderNotes
                     orderKey={orderKey}
                     isMainOrder={isMainOrder}
-                    customerId={customerId} // Use customerId if provided, else fallback to customer.id
+                    customerId={customerId}
+                    notes={notes}
+                    setNotes={setNotes}
                   />
                 </div>
               </div>
@@ -501,6 +497,7 @@ const OrderEditModal = ({
     </Dialog>
   );
 };
+// Add this before the export statement
 
 OrderEditModal.propTypes = {
   isOpen: PropTypes.bool.isRequired,
@@ -509,37 +506,17 @@ OrderEditModal.propTypes = {
     fullName: PropTypes.string.isRequired,
     email: PropTypes.string,
     phone: PropTypes.string,
+    message: PropTypes.string,
   }).isRequired,
   orderKey: PropTypes.string.isRequired,
-  orderData: PropTypes.shape({
-    status: PropTypes.string,
-    notes: PropTypes.string,
-    dimensions: PropTypes.shape({
-      kontiWidth: PropTypes.number,
-      kontiHeight: PropTypes.number,
-      anaWidth: PropTypes.number,
-      anaHeight: PropTypes.number,
-      verandaWidth: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
-      verandaHeight: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
-      length: PropTypes.number,
-    }),
-    // Her kategori için dinamik nesne yapısı
-    [PropTypes.string]: PropTypes.objectOf(
-      PropTypes.shape({
-        name: PropTypes.string.isRequired,
-        price: PropTypes.number.isRequired,
-        productCollectionId: PropTypes.string,
-      })
-    ),
-  }).isRequired,
+  orderData: PropTypes.object.isRequired,
   initialDimensions: PropTypes.shape({
-    kontiWidth: PropTypes.number,
-    kontiHeight: PropTypes.number,
-    anaWidth: PropTypes.number,
-    anaHeight: PropTypes.number,
-    verandaWidth: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
-    verandaHeight: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
-    length: PropTypes.number,
+    kontiWidth: PropTypes.oneOfType([PropTypes.number, PropTypes.string]),
+    kontiHeight: PropTypes.oneOfType([PropTypes.number, PropTypes.string]),
+    anaWidth: PropTypes.oneOfType([PropTypes.number, PropTypes.string]),
+    anaHeight: PropTypes.oneOfType([PropTypes.number, PropTypes.string]),
+    verandaWidth: PropTypes.oneOfType([PropTypes.number, PropTypes.string]),
+    verandaHeight: PropTypes.oneOfType([PropTypes.number, PropTypes.string]),
   }),
   isMainOrder: PropTypes.bool,
   customerId: PropTypes.string,
