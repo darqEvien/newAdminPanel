@@ -445,146 +445,197 @@ const OrderEditModal = ({
       toast.error("Değişiklikler kaydedilirken bir hata oluştu.");
     }
   };
+  // useEffect içinde arka planı kontrol etme ve temizleme
 
+  // Return kısmını yenileyelim
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-[90vw] w-[90vw] h-[85vh] max-h-[85vh] p-0 flex flex-col bg-gray-900">
-        {/* Header */}
-        <div className="border-b border-gray-800 p-4">
+    <Dialog
+      open={isOpen}
+      onOpenChange={onClose}
+      className="dark-theme-dialog z-[9999]"
+    >
+      <DialogContent className="max-w-[95vw] w-[95vw] h-[90vh] max-h-[90vh] p-0 flex flex-col bg-gradient-to-br from-gray-950 to-gray-900 border border-gray-800/40 shadow-xl rounded-lg overflow-hidden z-[9999]">
+        {/* Header - Gradient background ile şık başlık */}
+        <div className="border-b border-gray-800/50 bg-gradient-to-r from-gray-900 to-gray-850 p-4 backdrop-blur-md">
           <div className="flex items-center justify-between">
-            <h1 className="text-xl font-semibold text-gray-100">
-              Sipariş Düzenle - {customer.fullName}
-            </h1>
-            <button
-              onClick={onClose}
-              className="text-gray-400 hover:text-gray-300 transition-colors"
-            >
-              <svg
-                className="w-5 h-5"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
+            <div className="flex items-center space-x-3">
+              <div className="h-8 w-1 rounded-full bg-indigo-500"></div>
+              <h1
+                className="text-xl font-semibold text-gray-100"
+                style={{
+                  textRendering: "optimizeLegibility",
+                  WebkitFontSmoothing: "antialiased",
+                }}
               >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth="2"
-                  d="M6 18L18 6M6 6l12 12"
-                />
-              </svg>
-            </button>
+                Sipariş Düzenle - {customer.fullName}
+              </h1>
+            </div>
           </div>
         </div>
 
-        {/* Main Content */}
-        <div className="flex-1 overflow-hidden">
+        {/* Main Content - Glass effect container */}
+        <div className="flex-1 overflow-hidden bg-gray-900/30 backdrop-blur-md">
           <div className="flex h-full">
             {/* Left Panel */}
-            <div className="flex-1 flex flex-col h-full border-r border-gray-800">
-              <div className="p-4 space-y-4 overflow-y-auto">
-                {/* Customer Info Card */}
-                <div className="bg-gray-800/40 rounded-lg p-4 backdrop-blur-sm">
-                  <CustomerInfo customer={customer} />
+            <div className="flex-1 flex flex-col h-full border-r border-gray-800/30">
+              <div className="p-5 space-y-6 overflow-y-auto custom-scrollbar">
+                {/* Customer Info Card - Modern Glassmorphism */}
+                <div className="bg-gradient-to-br from-gray-800/40 to-gray-800/20 rounded-xl backdrop-blur-lg border border-gray-700/30 shadow-lg overflow-hidden">
+                  <div className="flex flex-col">
+                    {/* Card Header */}
+                    <div className="bg-gradient-to-r from-indigo-600/20 to-purple-600/10 p-4 border-b border-gray-700/30">
+                      <div className="flex items-center gap-3">
+                        <div className="h-8 w-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white">
+                          <svg
+                            className="w-4 h-4"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                            shapeRendering="geometricPrecision"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth="1.5"
+                              d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
+                            />
+                          </svg>
+                        </div>
+                        <h3 className="text-md font-medium text-gray-100">
+                          Müşteri Bilgileri
+                        </h3>
+                      </div>
+                    </div>
+
+                    {/* Card Content - Enhanced Design */}
+                    <div className="p-5">
+                      <CustomerInfo customer={customer} />
+                    </div>
+                  </div>
                 </div>
 
-                {/* Order Details Card */}
-                <div className="bg-gray-800/40 rounded-lg p-4 backdrop-blur-sm">
-                  <div className="flex justify-between mb-4">
-                    <h2 className="text-lg font-medium text-gray-200">
+                {/* Order Details Card - Modern Glassmorphism */}
+                <div className="bg-gray-800/30 rounded-xl p-5 backdrop-blur-lg border border-gray-700/20 shadow-lg">
+                  <div className="flex justify-between mb-5">
+                    <h2
+                      className="text-lg font-medium text-gray-200 flex items-center gap-2"
+                      style={{
+                        textRendering: "optimizeLegibility",
+                        WebkitFontSmoothing: "antialiased",
+                      }}
+                    >
+                      <svg
+                        className="w-5 h-5 text-indigo-400"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                        shapeRendering="geometricPrecision"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth="1.5"
+                          d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"
+                        />
+                      </svg>
                       Sipariş Detayları
                     </h2>
-                    <div className="flex items-center space-x-2">
-                      <span className="text-sm text-gray-400">
-                        {
-                          Object.keys(localOrderData).filter(
-                            (key) =>
-                              ![
-                                "status",
-                                "verandaWidth",
-                                "verandaHeight",
-                                "dimensions",
-                                "kontiWidth",
-                                "kontiHeight",
-                                "notes",
-                              ].includes(key)
-                          ).length
-                        }{" "}
-                        Ürün
-                      </span>
+                    <div className="flex items-center space-x-3">
                       <button
                         onClick={handleRefreshPrices}
-                        className="p-1 rounded hover:bg-gray-700/50 text-blue-400 hover:text-blue-300 transition-colors"
+                        className="p-2 rounded-full bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 hover:text-blue-300 transition-all duration-200"
                         title="Fiyatları Güncelle"
                       >
                         <svg
-                          className="w-5 h-5"
+                          className="w-4 h-4"
                           fill="none"
                           stroke="currentColor"
                           viewBox="0 0 24 24"
+                          shapeRendering="geometricPrecision"
                         >
                           <path
                             strokeLinecap="round"
                             strokeLinejoin="round"
-                            strokeWidth="2"
+                            strokeWidth="1.5"
                             d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
                           />
                         </svg>
                       </button>
                     </div>
                   </div>
-                  <div className="grid grid-cols-2 gap-4">
+
+                  {/* Grid layout with tabs style */}
+                  <div className="grid grid-cols-2 gap-6">
                     {/* OrderDetails */}
-                    <div className="border-r border-gray-700 pr-3">
-                      <div className="mb-3 pb-2 border-b border-gray-700">
-                        <h3 className="text-sm font-medium text-gray-300">
+                    <div className="border-r border-gray-700/30 pr-5">
+                      <div className="mb-4 pb-2 border-b border-gray-700/30 flex items-center gap-2">
+                        <div className="h-2 w-2 rounded-full bg-emerald-500"></div>
+                        <h3
+                          className="text-sm font-medium text-gray-300"
+                          style={{
+                            textRendering: "optimizeLegibility",
+                            WebkitFontSmoothing: "antialiased",
+                          }}
+                        >
                           Ürünler
                         </h3>
                       </div>
-                      <OrderDetails
-                        categories={categories}
-                        products={products}
-                        localOrderData={localOrderData}
-                        editingItem={editingItem}
-                        selectedProduct={selectedProduct}
-                        editingValues={editingValues}
-                        setEditingItem={setEditingItem}
-                        setSelectedProduct={setSelectedProduct}
-                        setEditingValues={setEditingValues}
-                        setLocalOrderData={setLocalOrderData}
-                        shouldRecalc={shouldRecalcPrices}
-                        setShouldRecalcPrices={setShouldRecalcPrices}
-                        skipInitialCalc={skipInitialCalc} // Yeni prop ekleme
-                        isFirstLoad={firstLoadRef.current}
-                      />
+                      <div className="custom-scrollbar pr-1 max-h-[60vh] overflow-y-auto">
+                        <OrderDetails
+                          categories={categories}
+                          products={products}
+                          localOrderData={localOrderData}
+                          editingItem={editingItem}
+                          selectedProduct={selectedProduct}
+                          editingValues={editingValues}
+                          setEditingItem={setEditingItem}
+                          setSelectedProduct={setSelectedProduct}
+                          setEditingValues={setEditingValues}
+                          setLocalOrderData={setLocalOrderData}
+                          shouldRecalc={shouldRecalcPrices}
+                          setShouldRecalcPrices={setShouldRecalcPrices}
+                          skipInitialCalc={skipInitialCalc}
+                          isFirstLoad={firstLoadRef.current}
+                        />
+                      </div>
                     </div>
 
                     {/* Bonus Items */}
                     <div className="pl-3">
-                      <div className="mb-3 pb-2 border-b border-gray-700">
-                        <h3 className="text-sm font-medium text-gray-300">
+                      <div className="mb-4 pb-2 border-b border-gray-700/30 flex items-center gap-2">
+                        <div className="h-2 w-2 rounded-full bg-purple-500"></div>
+                        <h3
+                          className="text-sm font-medium text-gray-300"
+                          style={{
+                            textRendering: "optimizeLegibility",
+                            WebkitFontSmoothing: "antialiased",
+                          }}
+                        >
                           Bonus Ürünler
                         </h3>
                       </div>
-                      <BonusItems
-                        categories={categories}
-                        products={products}
-                        savedItems={savedItems}
-                        setSavedItems={setSavedItems}
-                        shouldRecalc={shouldRecalcPrices}
-                        setShouldRecalcPrices={setShouldRecalcPrices}
-                        skipInitialCalc={skipInitialCalc} // Yeni prop ekleme
-                        isFirstLoad={firstLoadRef.current}
-                      />
+                      <div className="custom-scrollbar pr-1 max-h-[60vh] overflow-y-auto">
+                        <BonusItems
+                          categories={categories}
+                          products={products}
+                          savedItems={savedItems}
+                          setSavedItems={setSavedItems}
+                          shouldRecalc={shouldRecalcPrices}
+                          setShouldRecalcPrices={setShouldRecalcPrices}
+                          skipInitialCalc={skipInitialCalc}
+                          isFirstLoad={firstLoadRef.current}
+                        />
+                      </div>
                     </div>
                   </div>
                 </div>
               </div>
             </div>
 
-            {/* Right Panel */}
-            <div className="w-[300px] flex flex-col h-full bg-gray-800/30 border-l border-gray-700">
+            {/* Right Panel - Notes Section */}
+            <div className="w-[320px] flex flex-col h-full bg-gray-900/60 backdrop-blur-lg border-l border-gray-800/30">
               <div className="flex flex-col h-full">
-                <div className="flex-1 overflow-y-auto p-3">
+                <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
                   <OrderNotes
                     orderKey={orderKey}
                     isMainOrder={isMainOrder}
@@ -598,8 +649,8 @@ const OrderEditModal = ({
           </div>
         </div>
 
-        {/* Footer */}
-        <div className="border-t border-gray-800 bg-gray-900/95 backdrop-blur-sm p-4">
+        {/* Footer - Modern Glassmorphism */}
+        <div>
           <OrderSummary
             orderData={localOrderData}
             savedItems={savedItems}

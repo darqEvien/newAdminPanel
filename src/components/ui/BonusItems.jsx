@@ -659,20 +659,27 @@ const BonusItems = ({
       try {
         const value = e.target.value;
 
-        // Handle custom product
-        if (value === "custom") {
+        // "custom" değeri için hata kontrolü ekleyelim
+        if (!value || value === "custom") {
           setNewItem((prev) => ({
             ...prev,
             product: "",
             productId: "",
             price: "",
-            custom: true,
+            custom: value === "custom",
             name: "",
           }));
           return;
         }
 
-        const selectedProduct = JSON.parse(value);
+        // JSON parse hatası kontrolü
+        let selectedProduct;
+        try {
+          selectedProduct = JSON.parse(value);
+        } catch (error) {
+          console.error("Product JSON parse error:", value, error);
+          return;
+        }
 
         // İstemiyorum seçildiyse
         if (selectedProduct.id === "istemiyorum") {
@@ -689,6 +696,18 @@ const BonusItems = ({
 
         const categoryName = newItem.category;
         const productData = products[categoryName]?.[selectedProduct.id];
+
+        // productData bulunamadı hatası
+        if (!productData) {
+          console.error(
+            "Product data not found for:",
+            selectedProduct.id,
+            "in category:",
+            categoryName
+          );
+          // Yine de devam et ama loglayalım
+        }
+
         const category = Object.values(categories).find(
           (cat) =>
             cat.propertyName?.toLowerCase() === categoryName.toLowerCase()
@@ -696,24 +715,37 @@ const BonusItems = ({
 
         // Calculate price based on dimensions and product
         if (productData && category?.priceFormat) {
-          // Use originalDimensions directly instead of creating an unused variable
-          const price = calculateItemPrice(
-            category.priceFormat,
-            categoryName,
-            productData,
-            dimensions.kontiWidth,
-            dimensions.kontiHeight,
-            originalDimensions.current || dimensions
-          );
+          // Fiyat hesaplamada hata kontrolü ekleyelim
+          try {
+            const price = calculateItemPrice(
+              category.priceFormat,
+              categoryName,
+              productData,
+              dimensions.kontiWidth,
+              dimensions.kontiHeight,
+              originalDimensions.current || dimensions
+            );
 
-          setNewItem((prev) => ({
-            ...prev,
-            product: selectedProduct.name,
-            productId: selectedProduct.id,
-            price: price,
-            custom: false,
-            name: selectedProduct.name,
-          }));
+            setNewItem((prev) => ({
+              ...prev,
+              product: selectedProduct.name,
+              productId: selectedProduct.id,
+              price: price || Number(selectedProduct.price), // Hesaplama başarısız olursa direkt fiyatı kullan
+              custom: false,
+              name: selectedProduct.name,
+            }));
+          } catch (calcError) {
+            console.error("Price calculation error:", calcError);
+            // Hesaplama başarısız olursa direkt fiyatı kullan
+            setNewItem((prev) => ({
+              ...prev,
+              product: selectedProduct.name,
+              productId: selectedProduct.id,
+              price: Number(selectedProduct.price),
+              custom: false,
+              name: selectedProduct.name,
+            }));
+          }
         } else {
           // Use static price for non-dynamic categories
           setNewItem((prev) => ({
@@ -821,12 +853,29 @@ const BonusItems = ({
   // Add new item to list
   // Add new item to list
   const handleAddItem = useCallback(() => {
-    if (
-      (newItem.custom && !newItem.name) ||
-      !newItem.category ||
-      !newItem.price
-    ) {
-      return; // Validation
+    // Doğrulama kontrolü
+    const validationErrors = [];
+
+    if (!newItem.category) {
+      validationErrors.push("Kategori seçilmedi");
+    }
+
+    if (newItem.custom && !newItem.name) {
+      validationErrors.push("Özel ürün adı girilmedi");
+    }
+
+    if (!newItem.custom && !newItem.productId) {
+      validationErrors.push("Ürün seçilmedi");
+    }
+
+    if (!newItem.price && newItem.price !== 0) {
+      validationErrors.push("Fiyat girilmedi");
+    }
+
+    if (validationErrors.length > 0) {
+      console.error("Ürün eklerken validasyon hataları:", validationErrors);
+      // Burada kullanıcıya bir toast mesajı göstermek faydalı olabilir
+      return;
     }
 
     // Get the current dimensions BEFORE any changes
@@ -842,10 +891,10 @@ const BonusItems = ({
       productId: newItem.custom ? null : newItem.productId,
       price: Number(newItem.price),
       custom: newItem.custom,
-      // Store current dimensions with each item when added - VERY IMPORTANT
-      // This is like "freezing" the dimensions at the moment of addition
       originalDimensions: currentDimensions,
     };
+
+    console.log("Eklenecek ürün:", itemToAdd);
 
     // Update konti dimensions if needed
     if (
@@ -853,11 +902,18 @@ const BonusItems = ({
       itemToAdd.productId &&
       itemToAdd.productId !== "istemiyorum"
     ) {
-      // Update dimensions in the store - this will trigger recalculation
-      updateKontiDimensions(itemToAdd, "add");
+      try {
+        // Update dimensions in the store - this will trigger recalculation
+        updateKontiDimensions(itemToAdd, "add");
+      } catch (dimensionError) {
+        console.error("Boyut güncellemede hata:", dimensionError);
+      }
     }
 
+    // Ürünü ekle
     setSavedItems((prev) => [...prev, itemToAdd]);
+
+    // Formu sıfırla
     setNewItem({
       category: "",
       product: "",
@@ -868,7 +924,6 @@ const BonusItems = ({
     });
     setAdding(false);
   }, [newItem, dimensions, setSavedItems, updateKontiDimensions]);
-
   // Cancel adding new item
   const handleCancelAdd = useCallback(() => {
     setNewItem({
@@ -1245,12 +1300,14 @@ const BonusItems = ({
     <div className="space-y-3">
       {/* Item List */}
       {savedItems.length > 0 && (
-        <div className="mb-4 space-y-1">
+        <div className="mb-4 space-y-1.5">
           {savedItems.map((item, index) => (
             <div
               key={item.id || index}
-              className={`grid grid-cols-[2fr,2fr,1fr,auto] items-center bg-gray-700/30 px-2 py-1 ${
-                editingItem === index ? "bg-gray-700/50" : ""
+              className={`grid grid-cols-[2fr,2fr,1fr,auto] items-center bg-gray-800/40 backdrop-blur-sm px-3 py-1.5 rounded-md transition-all duration-200 border border-transparent ${
+                editingItem === index
+                  ? "bg-gray-700/50 border-indigo-500/30 shadow-md"
+                  : "hover:bg-gray-800/60 hover:border-gray-700/40"
               }`}
             >
               {editingItem === index ? (
@@ -1259,7 +1316,7 @@ const BonusItems = ({
                     <select
                       value={newItem.category}
                       onChange={handleCategoryChange}
-                      className="bg-gray-600 text-xs text-gray-200 px-2 py-1.5 rounded outline-none w-full"
+                      className="bg-gray-700/90 text-xs text-gray-200 px-2 py-1.5 rounded border border-gray-600/50 focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/20 outline-none w-full transition-all duration-200"
                     >
                       <option value="">Kategori Seçin</option>
                       {categoryOptions.map((option) => (
@@ -1277,7 +1334,7 @@ const BonusItems = ({
                         value={newItem.name}
                         onChange={handleNameChange}
                         placeholder="Ürün adı"
-                        className="bg-gray-600 text-xs text-gray-200 px-2 py-1.5 rounded outline-none w-full"
+                        className="bg-gray-700/90 text-xs text-gray-200 px-2 py-1.5 rounded border border-gray-600/50 focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/20 outline-none w-full transition-all duration-200"
                       />
                     ) : (
                       <select
@@ -1291,7 +1348,7 @@ const BonusItems = ({
                             : ""
                         }
                         onChange={handleProductChange}
-                        className="bg-gray-600 text-xs text-gray-200 px-2 py-1.5 rounded outline-none w-full"
+                        className="bg-gray-700/90 text-xs text-gray-200 px-2 py-1.5 rounded border border-gray-600/50 focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/20 outline-none w-full transition-all duration-200"
                       >
                         <option value="">Ürün Seçin</option>
                         {productOptions.map((product) => (
@@ -1318,20 +1375,21 @@ const BonusItems = ({
                       value={newItem.price}
                       onChange={handlePriceChange}
                       placeholder="Fiyat"
-                      className="bg-gray-600 text-xs text-gray-200 px-2 py-1.5 rounded outline-none w-full"
+                      className="bg-gray-700/90 text-xs text-gray-200 px-2 py-1.5 rounded border border-gray-600/50 focus:border-green-500/50 focus:ring-1 focus:ring-green-500/20 outline-none w-full transition-all duration-200"
                     />
                   </div>
 
-                  <div className="flex gap-1">
+                  <div className="flex gap-1.5 justify-center">
                     <button
                       onClick={handleSaveEdit}
-                      className="text-green-400 hover:text-green-300 p-1"
+                      className="text-green-400 hover:text-green-300 bg-green-500/10 hover:bg-green-500/20 p-1.5 rounded-md transition-all duration-200"
                     >
                       <svg
-                        className="w-4 h-4"
+                        className="w-3.5 h-3.5"
                         fill="none"
                         stroke="currentColor"
                         viewBox="0 0 24 24"
+                        shapeRendering="geometricPrecision"
                       >
                         <path
                           strokeLinecap="round"
@@ -1343,13 +1401,14 @@ const BonusItems = ({
                     </button>
                     <button
                       onClick={() => setEditingItem(null)}
-                      className="text-gray-400 hover:text-gray-300 p-1"
+                      className="text-gray-400 hover:text-gray-300 bg-gray-500/10 hover:bg-gray-500/20 p-1.5 rounded-md transition-all duration-200"
                     >
                       <svg
-                        className="w-4 h-4"
+                        className="w-3.5 h-3.5"
                         fill="none"
                         stroke="currentColor"
                         viewBox="0 0 24 24"
+                        shapeRendering="geometricPrecision"
                       >
                         <path
                           strokeLinecap="round"
@@ -1363,26 +1422,28 @@ const BonusItems = ({
                 </>
               ) : (
                 <>
-                  <span className="text-gray-400 text-xs truncate">
+                  <span className="text-gray-400 text-xs truncate font-medium">
                     {categoryOptions.find((c) => c.value === item.category)
                       ?.label || item.category}
                   </span>
                   <span className="text-gray-300 text-xs truncate">
                     {item.product}
                   </span>
-                  <span className="text-green-400 text-xs">
+                  <span className="text-green-400 text-xs font-medium">
                     {Number(item.price)?.toLocaleString("tr-TR")}₺
                   </span>
-                  <div className="flex gap-1">
+                  <div className="flex gap-1.5 justify-center">
                     <button
                       onClick={() => handleEditItem(item, index)}
-                      className="text-blue-400 hover:text-blue-300 p-1"
+                      className="text-blue-400 hover:text-blue-300 bg-blue-500/10 hover:bg-blue-500/20 p-1.5 rounded-md transition-all duration-200"
+                      title="Düzenle"
                     >
                       <svg
-                        className="w-4 h-4"
+                        className="w-3.5 h-3.5"
                         fill="none"
                         stroke="currentColor"
                         viewBox="0 0 24 24"
+                        shapeRendering="geometricPrecision"
                       >
                         <path
                           strokeLinecap="round"
@@ -1394,13 +1455,15 @@ const BonusItems = ({
                     </button>
                     <button
                       onClick={() => handleDeleteItem(index)}
-                      className="text-red-400 hover:text-red-300 p-1"
+                      className="text-red-400 hover:text-red-300 bg-red-500/10 hover:bg-red-500/20 p-1.5 rounded-md transition-all duration-200"
+                      title="Sil"
                     >
                       <svg
-                        className="w-4 h-4"
+                        className="w-3.5 h-3.5"
                         fill="none"
                         stroke="currentColor"
                         viewBox="0 0 24 24"
+                        shapeRendering="geometricPrecision"
                       >
                         <path
                           strokeLinecap="round"
@@ -1420,12 +1483,12 @@ const BonusItems = ({
 
       {/* Add New Item Form */}
       {adding ? (
-        <div className="grid grid-cols-[2fr,2fr,1fr,auto] gap-2 items-center bg-gray-700/30 p-2 rounded">
+        <div className="grid grid-cols-[2fr,2fr,1fr,auto] gap-2 items-center bg-gray-800/40 backdrop-blur-sm p-3 rounded-md border border-gray-700/40 shadow-md">
           <div>
             <select
               value={newItem.category}
               onChange={handleCategoryChange}
-              className="bg-gray-600 text-xs text-gray-200 px-2 py-1.5 rounded outline-none w-full"
+              className="bg-gray-700/90 text-xs text-gray-200 px-2 py-1.5 rounded border border-gray-600/50 focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/20 outline-none w-full transition-all duration-200"
             >
               <option value="">Kategori Seçin</option>
               {categoryOptions.map((option) => (
@@ -1443,7 +1506,7 @@ const BonusItems = ({
                 value={newItem.name}
                 onChange={handleNameChange}
                 placeholder="Ürün adı"
-                className="bg-gray-600 text-xs text-gray-200 px-2 py-1.5 rounded outline-none w-full"
+                className="bg-gray-700/90 text-xs text-gray-200 px-2 py-1.5 rounded border border-gray-600/50 focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/20 outline-none w-full transition-all duration-200"
               />
             ) : (
               <select
@@ -1458,7 +1521,7 @@ const BonusItems = ({
                 }
                 onChange={handleProductChange}
                 disabled={!newItem.category}
-                className="bg-gray-600 text-xs text-gray-200 px-2 py-1.5 rounded outline-none w-full disabled:opacity-50"
+                className="bg-gray-700/90 text-xs text-gray-200 px-2 py-1.5 rounded border border-gray-600/50 focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/20 outline-none w-full disabled:opacity-50 transition-all duration-200"
               >
                 <option value="">Ürün Seçin</option>
                 {productOptions.map((product) => (
@@ -1485,20 +1548,22 @@ const BonusItems = ({
               value={newItem.price}
               onChange={handlePriceChange}
               placeholder="Fiyat"
-              className="bg-gray-600 text-xs text-gray-200 px-2 py-1.5 rounded outline-none w-full"
+              className="bg-gray-700/90 text-xs text-gray-200 px-2 py-1.5 rounded border border-gray-600/50 focus:border-green-500/50 focus:ring-1 focus:ring-green-500/20 outline-none w-full transition-all duration-200"
             />
           </div>
 
-          <div className="flex gap-1">
+          <div className="flex gap-1.5 justify-center">
             <button
               onClick={handleAddItem}
-              className="text-green-400 hover:text-green-300 p-1"
+              className="text-green-400 hover:text-green-300 bg-green-500/10 hover:bg-green-500/20 p-1.5 rounded-md transition-all duration-200"
+              title="Ekle"
             >
               <svg
-                className="w-4 h-4"
+                className="w-3.5 h-3.5"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
+                shapeRendering="geometricPrecision"
               >
                 <path
                   strokeLinecap="round"
@@ -1510,13 +1575,15 @@ const BonusItems = ({
             </button>
             <button
               onClick={handleCancelAdd}
-              className="text-gray-400 hover:text-gray-300 p-1"
+              className="text-gray-400 hover:text-gray-300 bg-gray-500/10 hover:bg-gray-500/20 p-1.5 rounded-md transition-all duration-200"
+              title="İptal"
             >
               <svg
-                className="w-4 h-4"
+                className="w-3.5 h-3.5"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
+                shapeRendering="geometricPrecision"
               >
                 <path
                   strokeLinecap="round"
@@ -1532,14 +1599,15 @@ const BonusItems = ({
         <div className="flex justify-center">
           <button
             onClick={() => setAdding(true)}
-            className="flex items-center justify-center text-blue-400 hover:text-blue-300 p-2 rounded-full hover:bg-gray-700/30 transition-colors"
+            className="flex items-center justify-center gap-2 text-blue-400 hover:text-blue-300 bg-blue-500/10 hover:bg-blue-500/20 py-2 px-3 rounded-lg transition-all duration-200"
             title="Bonus Ürün Ekle"
           >
             <svg
-              className="w-5 h-5"
+              className="w-4 h-4"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
+              shapeRendering="geometricPrecision"
             >
               <path
                 strokeLinecap="round"
@@ -1548,6 +1616,7 @@ const BonusItems = ({
                 d="M12 4v16m8-8H4"
               />
             </svg>
+            <span className="text-xs font-medium">Bonus Ürün Ekle</span>
           </button>
         </div>
       )}

@@ -851,7 +851,7 @@ const OrderDetails = ({
 
   // JSX'de doğrudan sortedCategories'i kullan
   return (
-    <div className="grid grid-cols-1 divide-y divide-gray-700/50">
+    <div className="grid grid-cols-1 space-y-0.5">
       {sortedCategories.map(([categoryName, categoryProducts]) => {
         const category = Object.values(categories).find(
           (cat) =>
@@ -859,141 +859,201 @@ const OrderDetails = ({
         );
 
         return (
-          <div key={categoryName}>
-            {Object.entries(categoryProducts).map(([productIndex, product]) => (
-              <div
-                key={`${categoryName}-${productIndex}`}
-                className="grid grid-cols-[2fr,2fr,1fr,auto] items-center bg-gray-700/30 px-2 py-1"
-              >
-                {editingItem === `${categoryName}-${productIndex}` ? (
-                  <>
-                    <span className="text-gray-400 text-xs truncate">
-                      {category?.title || categoryName}
-                    </span>
-                    <div className="relative">
-                      <select
-                        value={
-                          selectedProduct ? JSON.stringify(selectedProduct) : ""
-                        }
-                        onChange={(e) =>
-                          handleProductSelect(
-                            e.target.value,
-                            categoryName,
-                            productIndex
-                          )
-                        }
-                        className="bg-gray-600 text-xs text-gray-200 px-2 py-1.5 rounded outline-none w-full"
-                      >
-                        {/* Önce mevcut seçili ürünü göster */}
-                        {selectedProduct && !selectedProduct.custom && (
-                          <option value={JSON.stringify(selectedProduct)}>
-                            {selectedProduct.name} -{" "}
-                            {Number(selectedProduct.price)?.toLocaleString(
-                              "tr-TR"
-                            )}
-                            ₺
-                          </option>
-                        )}
-                        {/* Sonra diğer ürünleri göster */}
-                        {products[categoryName] &&
-                          sortProducts(products[categoryName])
-                            .filter(([key]) => key !== selectedProduct?.id) // Seçili ürünü filtrele
-                            .map(([key, product]) => (
-                              <option
-                                key={key}
-                                value={JSON.stringify({
-                                  id: key,
-                                  name: product.title || product.name,
-                                  price: product.price,
-                                  custom: false,
-                                })}
+          <div
+            key={categoryName}
+            className="bg-gray-800/30 rounded overflow-hidden"
+          >
+            {/* Kategori başlığı - ekstra başlık isteniyorsa burayı aktifleştirin */}
+            {/* 
+            <div className="bg-gradient-to-r from-gray-700/40 to-gray-700/20 px-2.5 py-1 border-b border-gray-700/30">
+              <span className="text-xs font-medium text-gray-300">{category?.title || categoryName}</span>
+            </div>
+            */}
+
+            <div className="divide-y divide-gray-700/30">
+              {Object.entries(categoryProducts).map(
+                ([productIndex, product]) => (
+                  <div
+                    key={`${categoryName}-${productIndex}`}
+                    className="hover:bg-gray-700/20 transition-colors duration-150"
+                  >
+                    <div className="grid grid-cols-[2fr,2fr,1fr,auto] items-center px-2 py-1.5 gap-1">
+                      {editingItem === `${categoryName}-${productIndex}` ? (
+                        <>
+                          <span
+                            className="text-gray-400 text-[0.75rem] truncate"
+                            style={{
+                              textRendering: "optimizeLegibility",
+                              WebkitFontSmoothing: "antialiased",
+                            }}
+                          >
+                            {category?.title || categoryName}
+                          </span>
+                          <div className="relative">
+                            <select
+                              value={
+                                selectedProduct
+                                  ? JSON.stringify(selectedProduct)
+                                  : ""
+                              }
+                              onChange={(e) =>
+                                handleProductSelect(
+                                  e.target.value,
+                                  categoryName,
+                                  productIndex
+                                )
+                              }
+                              className="bg-gray-600/90 text-[0.75rem] text-gray-200 px-2 py-1.5 rounded border border-gray-500/40 focus:border-indigo-500/50 outline-none w-full transition-all duration-200"
+                              style={{ WebkitFontSmoothing: "antialiased" }}
+                            >
+                              {/* Önce mevcut seçili ürünü göster */}
+                              {selectedProduct && !selectedProduct.custom && (
+                                <option value={JSON.stringify(selectedProduct)}>
+                                  {selectedProduct.name} -{" "}
+                                  {Number(
+                                    selectedProduct.price
+                                  )?.toLocaleString("tr-TR")}
+                                  ₺
+                                </option>
+                              )}
+                              {/* Sonra diğer ürünleri göster */}
+                              {products[categoryName] &&
+                                sortProducts(products[categoryName])
+                                  .filter(
+                                    ([key]) => key !== selectedProduct?.id
+                                  ) // Seçili ürünü filtrele
+                                  .map(([key, product]) => (
+                                    <option
+                                      key={key}
+                                      value={JSON.stringify({
+                                        id: key,
+                                        name: product.title || product.name,
+                                        price: product.price,
+                                        custom: false,
+                                      })}
+                                    >
+                                      {product.title || product.name} -{" "}
+                                      {Number(product.price)?.toLocaleString(
+                                        "tr-TR"
+                                      )}
+                                      ₺
+                                    </option>
+                                  ))}
+                              <option value='{"custom":true}'>Diğer</option>
+                            </select>
+                          </div>
+                          <input
+                            type="number"
+                            value={editingValues.price}
+                            onChange={(e) =>
+                              handlePriceChange(e, categoryName, productIndex)
+                            }
+                            className="bg-gray-600/90 text-[0.75rem] text-gray-200 px-2 py-1.5 rounded border border-gray-500/40 focus:border-green-500/50 outline-none w-full transition-all duration-200"
+                            style={{ WebkitFontSmoothing: "antialiased" }}
+                          />
+                          <div className="flex gap-1">
+                            <button
+                              onClick={() =>
+                                handleSave(categoryName, productIndex)
+                              }
+                              className="text-green-400 hover:text-green-300 bg-green-500/10 hover:bg-green-500/20 rounded p-1 transition-colors duration-150"
+                            >
+                              <svg
+                                className="w-4 h-4"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                                shapeRendering="geometricPrecision"
                               >
-                                {product.title || product.name} -{" "}
-                                {Number(product.price)?.toLocaleString("tr-TR")}
-                                ₺
-                              </option>
-                            ))}
-                        <option value='{"custom":true}'>Diğer</option>
-                      </select>
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth="2"
+                                  d="M5 13l4 4L19 7"
+                                />
+                              </svg>
+                            </button>
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <span
+                            className="text-gray-400 text-[0.75rem] truncate"
+                            style={{
+                              textRendering: "optimizeLegibility",
+                              WebkitFontSmoothing: "antialiased",
+                            }}
+                          >
+                            {category?.title || categoryName}
+                          </span>
+                          <span
+                            className="text-gray-300 text-[0.75rem] truncate cursor-pointer hover:text-indigo-300 transition-colors duration-150"
+                            onClick={() =>
+                              handleEdit(categoryName, productIndex, product)
+                            }
+                            style={{
+                              textRendering: "optimizeLegibility",
+                              WebkitFontSmoothing: "antialiased",
+                            }}
+                          >
+                            {product.name}
+                          </span>
+                          <span
+                            className="text-green-400 text-[0.75rem] cursor-pointer hover:text-green-300 transition-colors duration-150"
+                            onClick={() =>
+                              handlePriceClick(
+                                categoryName,
+                                productIndex,
+                                product
+                              )
+                            }
+                            style={{
+                              textRendering: "optimizeLegibility",
+                              WebkitFontSmoothing: "antialiased",
+                            }}
+                          >
+                            {Number(product.price)?.toLocaleString("tr-TR")}₺
+                          </span>
+                          <div className="flex gap-1">
+                            <button
+                              onClick={() =>
+                                handleDelete(categoryName, productIndex)
+                              }
+                              className="text-red-400 hover:text-red-300 bg-red-500/10 hover:bg-red-500/20 rounded p-1 transition-colors duration-150"
+                              title="Sil"
+                            >
+                              <svg
+                                className="w-4 h-4"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                                shapeRendering="geometricPrecision"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth="2"
+                                  d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                                />
+                              </svg>
+                            </button>
+                          </div>
+                        </>
+                      )}
                     </div>
-                    <input
-                      type="number"
-                      value={editingValues.price}
-                      onChange={(e) =>
-                        handlePriceChange(e, categoryName, productIndex)
-                      }
-                      className="bg-gray-600 text-xs text-gray-200 px-2 py-1.5 rounded outline-none w-full"
-                    />
-                    <div className="flex gap-1">
-                      <button
-                        onClick={() => handleSave(categoryName, productIndex)}
-                        className="text-green-400 hover:text-green-300 p-1"
-                      >
-                        <svg
-                          className="w-4 h-4"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth="2"
-                            d="M5 13l4 4L19 7"
-                          />
-                        </svg>
-                      </button>
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <span className="text-gray-400 text-xs truncate">
-                      {category?.title || categoryName}
-                    </span>
-                    <span
-                      className="text-gray-300 text-xs truncate cursor-pointer hover:text-gray-200"
-                      onClick={() =>
-                        handleEdit(categoryName, productIndex, product)
-                      }
-                    >
-                      {product.name}
-                    </span>
-                    <span
-                      className="text-green-400 text-xs cursor-pointer hover:text-green-300"
-                      onClick={() =>
-                        handlePriceClick(categoryName, productIndex, product)
-                      }
-                    >
-                      {Number(product.price)?.toLocaleString("tr-TR")}₺
-                    </span>
-                    <div className="flex gap-1">
-                      <button
-                        onClick={() => handleDelete(categoryName, productIndex)}
-                        className="text-red-400 hover:text-red-300 p-1"
-                        title="Sil"
-                      >
-                        <svg
-                          className="w-4 h-4"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth="2"
-                            d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                          />
-                        </svg>
-                      </button>
-                    </div>
-                  </>
-                )}
-              </div>
-            ))}
+                  </div>
+                )
+              )}
+            </div>
           </div>
         );
       })}
+
+      {sortedCategories.length === 0 && (
+        <div className="flex flex-col items-center justify-center py-4 px-3 bg-gray-800/20 rounded-lg border border-gray-700/30">
+          <p className="text-gray-400 text-sm">Henüz ürün eklenmemiş</p>
+        </div>
+      )}
     </div>
   );
 };
