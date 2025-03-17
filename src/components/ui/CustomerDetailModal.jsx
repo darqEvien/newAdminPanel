@@ -457,6 +457,7 @@ const CustomerDetailModal = ({ isOpen, onClose, customer }) => {
 
     return count;
   };
+
   const renderProducts = () => {
     const allOrders = [];
 
@@ -495,40 +496,68 @@ const CustomerDetailModal = ({ isOpen, onClose, customer }) => {
     return allOrders.map((order) => (
       <div
         key={order.key}
-        className="bg-gray-800 rounded-lg overflow-hidden border border-gray-700 max-w-md" // max-w-md ekleyerek kartın maksimum genişliğini sınırladım
+        className="bg-gradient-to-b from-gray-800 to-gray-800/90 rounded-lg overflow-hidden border border-gray-700 shadow-lg hover:shadow-xl transition-shadow duration-300 hover:border-gray-600/70"
       >
         {/* Card Header */}
-        <div className="p-3 border-b border-gray-700 bg-gray-800/50">
-          {" "}
-          {/* padding'i p-4'ten p-3'e düşürdüm */}
+        <div className="p-3 border-b border-gray-700/70 bg-gray-800/80">
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2">
-              {" "}
-              {/* space-x yerine gap kullandım */}
               {order.dimensions?.kontiWidth &&
                 order.dimensions?.kontiHeight && (
-                  <span className="bg-gray-700/50 px-2 py-0.5 rounded text-xs text-gray-300">
-                    {order.dimensions.kontiWidth} x{" "}
-                    {order.dimensions.kontiHeight}
-                    <span className="ml-1 text-gray-400">
-                      (
-                      {(
-                        order.dimensions.kontiWidth *
-                        order.dimensions.kontiHeight
-                      ).toFixed(2)}{" "}
-                      m²)
-                    </span>
-                  </span>
+                  <div className="bg-blue-500/10 px-2.5 py-1 rounded-md border border-blue-600/20">
+                    <div className="flex items-center gap-1.5">
+                      <svg
+                        className="w-3.5 h-3.5 text-blue-400"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth="2"
+                          d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5v-4m0 4h-4m4 0l-5-5"
+                        />
+                      </svg>
+                      <span className="text-xs text-blue-300 font-medium">
+                        {order.dimensions.kontiWidth} ×{" "}
+                        {order.dimensions.kontiHeight}
+                        <span className="ml-1 text-blue-400/70 font-normal">
+                          (
+                          {(
+                            order.dimensions.kontiWidth *
+                            order.dimensions.kontiHeight
+                          ).toFixed(2)}{" "}
+                          m²)
+                        </span>
+                      </span>
+                    </div>
+                  </div>
                 )}
+
               {order.type === "other" && (
-                <span className="bg-gray-700/30 px-2 py-0.5 rounded text-xs text-gray-400">
-                  Kaynak: {order.sourceCustomer.fullName}
+                <span className="bg-purple-500/10 px-2 py-0.5 rounded text-xs text-purple-300 border border-purple-500/20">
+                  <div className="flex items-center gap-1">
+                    <svg
+                      className="w-3 h-3"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth="2"
+                        d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"
+                      />
+                    </svg>
+                    <span>{order.sourceCustomer.fullName}</span>
+                  </div>
                 </span>
               )}
             </div>
+
             <div className="flex items-center gap-1">
-              {" "}
-              {/* space-x-2'yi gap-1'e düşürdüm */}
               <button
                 onClick={() =>
                   handleEditOrder(
@@ -538,14 +567,14 @@ const CustomerDetailModal = ({ isOpen, onClose, customer }) => {
                       ? order.dimensions
                       : customer.dimensions,
                     order.type === "other" ? order.sourceCustomer : null,
-                    order.type // Pass the order type
+                    order.type
                   )
                 }
-                className="text-gray-400 hover:text-blue-400 p-1"
+                className="text-gray-400 hover:text-blue-400 p-1.5 hover:bg-blue-400/10 rounded-md transition-colors"
                 title="Düzenle"
               >
                 <svg
-                  className="w-4 h-4"
+                  className="w-3.5 h-3.5"
                   fill="none"
                   stroke="currentColor"
                   viewBox="0 0 24 24"
@@ -558,14 +587,15 @@ const CustomerDetailModal = ({ isOpen, onClose, customer }) => {
                   />
                 </svg>
               </button>
+
               {order.pdfUrl && (
                 <button
                   onClick={() => window.open(order.pdfUrl, "_blank")}
-                  className="text-gray-400 hover:text-blue-400 p-1"
+                  className="text-gray-400 hover:text-green-400 p-1.5 hover:bg-green-400/10 rounded-md transition-colors"
                   title="PDF'i Aç"
                 >
                   <svg
-                    className="w-4 h-4"
+                    className="w-3.5 h-3.5"
                     fill="none"
                     stroke="currentColor"
                     viewBox="0 0 24 24"
@@ -579,13 +609,14 @@ const CustomerDetailModal = ({ isOpen, onClose, customer }) => {
                   </svg>
                 </button>
               )}
+
               <button
                 onClick={() => toggleExpand(order.key)}
-                className="text-gray-400 hover:text-blue-400 p-1"
+                className="text-gray-400 hover:text-blue-400 p-1.5 hover:bg-blue-400/10 rounded-md transition-colors"
                 title={expandedProducts[order.key] ? "Daralt" : "Genişlet"}
               >
                 <svg
-                  className="w-4 h-4"
+                  className="w-3.5 h-3.5"
                   fill="none"
                   stroke="currentColor"
                   viewBox="0 0 24 24"
@@ -609,28 +640,23 @@ const CustomerDetailModal = ({ isOpen, onClose, customer }) => {
               </button>
             </div>
           </div>
+
           {/* Konti Image */}
           {kontiImages[order.key]?.image && (
-            <div className="w-full h-32 rounded-md overflow-hidden">
-              {" "}
-              {/* h-40'ı h-32'ye düşürdüm */}
+            <div className="w-full h-32 rounded-md overflow-hidden bg-gradient-to-b from-gray-900 to-gray-800">
               <img
                 src={kontiImages[order.key].image}
                 alt={kontiImages[order.key].name}
-                className="w-full h-full object-contain bg-gray-900" // object-cover yerine object-contain kullandım ve bg ekledim
+                className="w-full h-full object-contain hover:scale-105 transition-transform duration-300"
               />
             </div>
           )}
         </div>
 
-        {/* Card Content */}
+        {/* Card Content - Product Details (Expandable) */}
         {expandedProducts[order.key] && (
-          <div className="p-2 bg-gray-800/30">
-            {" "}
-            {/* p-3'ten p-2'ye düşürdüm */}
-            <div className="space-y-1.5">
-              {" "}
-              {/* space-y-2'den space-y-1.5'e düşürdüm */}
+          <div className="p-3 bg-gray-800/30">
+            <div className="space-y-2">
               {Object.entries(order.data)
                 .filter(
                   ([categoryName]) =>
@@ -649,25 +675,24 @@ const CustomerDetailModal = ({ isOpen, onClose, customer }) => {
                   return (
                     <div
                       key={index}
-                      className="bg-gray-700/20 px-2 py-1.5 rounded text-xs"
+                      className="bg-gray-700/20 px-3 py-2 rounded-md border border-gray-700/30"
                     >
-                      {" "}
-                      {/* padding'i azalttım ve text-xs ekledim */}
-                      <div className="font-medium text-gray-300 text-xs">
-                        {" "}
-                        {/* text-sm'den text-xs'e düşürdüm */}
+                      <div className="font-medium text-gray-300 text-xs mb-1.5 flex items-center gap-1.5">
+                        <div className="w-1.5 h-1.5 rounded-full bg-blue-500"></div>
                         {category?.title || categoryName}
                       </div>
-                      <div className="grid grid-cols-2 gap-1 mt-1">
-                        {" "}
-                        {/* liste yerine grid kullandım */}
+
+                      <div className="grid grid-cols-2 gap-1.5">
                         {Object.entries(products).map(
                           ([productKey, product]) => (
                             <div
                               key={productKey}
-                              className="text-gray-400 text-xs truncate ml-1" // truncate ekledim
+                              className="flex items-center gap-1"
                             >
-                              {product.name || product.title}
+                              <div className="w-1 h-1 rounded-full bg-gray-500"></div>
+                              <span className="text-gray-400 text-xs truncate">
+                                {product.name || product.title}
+                              </span>
                             </div>
                           )
                         )}
@@ -680,12 +705,12 @@ const CustomerDetailModal = ({ isOpen, onClose, customer }) => {
         )}
 
         {/* Card Footer */}
-        <div className="p-3 border-t border-gray-700 bg-gray-800/50">
-          {" "}
-          {/* p-4'ü p-3'e düşürdüm */}
+        <div className="p-3 border-t border-gray-700/70 bg-gradient-to-r from-gray-800/50 to-gray-800/30">
           <div className="flex justify-between items-center">
-            <span className="text-gray-400 text-sm">Toplam Tutar:</span>
-            <span className="text-green-400 font-semibold">
+            <span className="text-gray-400 text-xs font-medium">
+              Toplam Tutar:
+            </span>
+            <span className="text-green-400 font-semibold bg-green-400/10 px-2.5 py-1 rounded border border-green-500/20">
               {order.totalPrice?.toLocaleString("tr-TR")}₺
             </span>
           </div>
@@ -704,30 +729,104 @@ const CustomerDetailModal = ({ isOpen, onClose, customer }) => {
         >
           <div className="flex h-full gap-6">
             {/* Left Section */}
-            <div className="flex-1 space-y-6 overflow-y-auto pr-4">
+            <div className="flex-1 space-y-6 overflow-y-auto pr-4 custom-scrollbar">
               {/* Customer Header */}
-              <div className="bg-gray-800/50 rounded-lg p-4">
+              <div className="bg-gray-800 rounded-lg p-6 shadow-lg border border-gray-700/50">
                 <div className="flex items-start justify-between">
-                  <div>
-                    <h1 className="text-2xl font-bold text-gray-100">
-                      {customer.fullName}
-                    </h1>
-                    <div className="space-y-1 mt-2">
-                      <p className="text-gray-400">{customer.email}</p>
-                      <p className="text-gray-400">{customer.phone}</p>
+                  <div className="flex gap-4">
+                    {/* Customer Avatar */}
+                    <div className="h-16 w-16 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white text-2xl font-bold">
+                      {customer.fullName?.charAt(0).toUpperCase()}
+                    </div>
+
+                    {/* Customer Info */}
+                    <div>
+                      <h1 className="text-2xl font-bold text-gray-100">
+                        {customer.fullName}
+                      </h1>
+                      <div className="space-y-1.5 mt-2">
+                        <div className="flex items-center gap-2 text-gray-400">
+                          <svg
+                            className="w-4 h-4"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth="1.5"
+                              d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
+                            />
+                          </svg>
+                          <p>{customer.email || "Email belirtilmemiş"}</p>
+                        </div>
+                        <div className="flex items-center gap-2 text-gray-400">
+                          <svg
+                            className="w-4 h-4"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth="1.5"
+                              d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"
+                            />
+                          </svg>
+                          <p>{customer.phone}</p>
+                        </div>
+                      </div>
                     </div>
                   </div>
-                  <div className="flex flex-col gap-2">
-                    <div className="bg-blue-900/30 px-4 py-2 rounded-lg">
-                      <span className="text-blue-300 font-medium">
-                        {getProductsLength()} Sipariş Bulundu
-                      </span>
-                    </div>
-                    {customer.message && (
-                      <div className="bg-gray-800 px-4 py-2 rounded-lg">
-                        <span className="text-gray-300 text-sm">
-                          {customer.message}
+
+                  <div className="flex flex-col gap-2.5">
+                    {/* Order Count Badge */}
+                    <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-4 py-2 rounded-lg shadow-md">
+                      <div className="flex items-center gap-2">
+                        <svg
+                          className="w-5 h-5 text-blue-200"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth="2"
+                            d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"
+                          />
+                        </svg>
+                        <span className="text-blue-100 font-medium">
+                          {getProductsLength()}{" "}
+                          {getProductsLength() === 1 ? "Sipariş" : "Sipariş"}{" "}
+                          Bulundu
                         </span>
+                      </div>
+                    </div>
+
+                    {/* Customer Message */}
+                    {customer.message && (
+                      <div className="bg-gray-700/40 px-4 py-2.5 rounded-lg border border-gray-600/50 max-w-xs">
+                        <div className="flex items-start gap-2">
+                          <svg
+                            className="w-4 h-4 text-gray-400 mt-0.5 flex-shrink-0"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth="2"
+                              d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"
+                            />
+                          </svg>
+                          <span className="text-gray-300 text-sm line-clamp-3 overflow-hidden">
+                            {customer.message}
+                          </span>
+                        </div>
                       </div>
                     )}
                   </div>
@@ -735,65 +834,180 @@ const CustomerDetailModal = ({ isOpen, onClose, customer }) => {
               </div>
 
               {/* Products Section */}
-              <div className="bg-gray-800/30 rounded-lg p-4">
-                <h2 className="text-xl font-semibold text-gray-200 mb-4">
-                  Siparişler
-                </h2>
-                <div className="grid grid-cols-2 gap-4">
-                  {/* Mevcut Siparişler */}
-                  {loading ? (
-                    <div className="text-gray-400">Yükleniyor...</div>
-                  ) : (
-                    <>{renderProducts()}</>
-                  )}
-                  {/* Yeni Sipariş Kartı */}
-                  <div
-                    className="bg-gray-800/30 rounded-lg p-4 flex flex-col items-center justify-center cursor-pointer hover:bg-gray-800/50 transition-colors relative border border-gray-700 border-dashed"
-                    onClick={() => setShowOrderOptions(true)}
-                  >
-                    <div className="text-gray-400 text-6xl mb-2">+</div>
-                    <span className="text-gray-400 text-sm">
-                      Yeni Sipariş Ekle
-                    </span>
+              {/* Products Section */}
+              <div className="bg-gradient-to-b from-gray-800/70 to-gray-800/40 rounded-lg shadow-lg border border-gray-700/40 overflow-hidden">
+                {/* Header with Icon */}
+                <div className="p-4 border-b border-gray-700/50 bg-gray-800/70 flex justify-between items-center">
+                  <div className="flex items-center gap-3">
+                    <div className="bg-blue-500/20 p-2 rounded-lg">
+                      <svg
+                        className="w-5 h-5 text-blue-400"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth="2"
+                          d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"
+                        />
+                      </svg>
+                    </div>
+                    <h2 className="text-xl font-semibold text-gray-200">
+                      Siparişler
+                    </h2>
+                  </div>
 
-                    {showOrderOptions && (
-                      <div className="absolute bottom-full left-0 mb-2 bg-gray-800 rounded-lg shadow-lg p-2 min-w-[200px] border border-gray-700 z-10">
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            // Yeni sipariş oluştur
-                          }}
-                          className="w-full text-left px-4 py-2 text-gray-300 hover:bg-gray-700 rounded"
-                        >
-                          Yeni Sipariş Oluştur
-                        </button>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setShowCustomerOrders(true);
-                            fetchAvailableCustomers();
-                          }}
-                          className="w-full text-left px-4 py-2 text-gray-300 hover:bg-gray-700 rounded"
-                        >
-                          Mevcut Siparişi Ekle
-                        </button>
+                  {/* Order count badge */}
+                  <span className="bg-blue-600/20 text-blue-400 text-xs px-2.5 py-1 rounded-full font-medium">
+                    {getProductsLength()}{" "}
+                    {getProductsLength() === 1 ? "Sipariş" : "Siparişler"}
+                  </span>
+                </div>
+
+                {/* Orders Grid */}
+                <div className="p-5">
+                  <div className="grid grid-cols-2 gap-5">
+                    {/* Existing Orders */}
+                    {loading ? (
+                      <div className="col-span-2 flex justify-center items-center p-8">
+                        <div className="inline-flex items-center gap-2 text-gray-400">
+                          <svg
+                            className="animate-spin w-5 h-5"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                          >
+                            <circle
+                              className="opacity-25"
+                              cx="12"
+                              cy="12"
+                              r="10"
+                              stroke="currentColor"
+                              strokeWidth="4"
+                            ></circle>
+                            <path
+                              className="opacity-75"
+                              fill="currentColor"
+                              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                            ></path>
+                          </svg>
+                          <span>Siparişler yükleniyor...</span>
+                        </div>
                       </div>
+                    ) : (
+                      <>{renderProducts()}</>
                     )}
+
+                    {/* Add New Order Card */}
+                    <div
+                      className="bg-gradient-to-b from-gray-800/50 to-gray-800/30 rounded-lg overflow-hidden border border-gray-700/60 border-dashed hover:border-blue-500/40 transition-all duration-300 group cursor-pointer"
+                      onClick={() => setShowOrderOptions(true)}
+                    >
+                      <div className="flex flex-col items-center justify-center h-full p-8 relative">
+                        <div className="h-14 w-14 rounded-full bg-gray-700/40 group-hover:bg-blue-600/20 flex items-center justify-center mb-3 transition-colors duration-300">
+                          <svg
+                            className="w-6 h-6 text-gray-400 group-hover:text-blue-400 transition-colors duration-300"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth="2"
+                              d="M12 6v6m0 0v6m0-6h6m-6 0H6"
+                            />
+                          </svg>
+                        </div>
+                        <span className="text-gray-400 group-hover:text-blue-400 font-medium transition-colors duration-300">
+                          Yeni Sipariş Ekle
+                        </span>
+
+                        {showOrderOptions && (
+                          <div className="absolute top-full left-1/2 -translate-x-1/2 mt-3 bg-gray-800 rounded-lg shadow-xl p-1 min-w-[220px] border border-gray-700 z-10">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                // Yeni sipariş oluştur
+                              }}
+                              className="w-full text-left px-4 py-2.5 text-gray-300 hover:bg-gray-700 rounded-md flex items-center gap-2"
+                            >
+                              <svg
+                                className="w-4 h-4 text-blue-400"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth="2"
+                                  d="M12 4v16m8-8H4"
+                                />
+                              </svg>
+                              Yeni Sipariş Oluştur
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setShowCustomerOrders(true);
+                                fetchAvailableCustomers();
+                              }}
+                              className="w-full text-left px-4 py-2.5 text-gray-300 hover:bg-gray-700 rounded-md flex items-center gap-2"
+                            >
+                              <svg
+                                className="w-4 h-4 text-green-400"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth="2"
+                                  d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"
+                                />
+                              </svg>
+                              Mevcut Siparişi Ekle
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
             </div>
 
-            {/* Right Section - Notes */}
-            <div className="w-80 border-l border-gray-700 pl-6 overflow-y-auto">
-              <div className="sticky top-0 bg-gray-900 pb-4 z-10">
-                <div className="flex items-center gap-2 mb-4">
-                  <h2 className="text-xl font-semibold text-gray-200">
-                    Notlar
-                  </h2>
+            <div className="w-80 border-l border-gray-700 pl-6 overflow-y-auto custom-scrollbar">
+              <div className="sticky top-0 bg-gray-900 pb-4 z-20">
+                {/* Notes Header */}
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2">
+                    <div className="bg-indigo-500/20 p-1.5 rounded-md">
+                      <svg
+                        className="w-4 h-4 text-indigo-400"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth="2"
+                          d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+                        />
+                      </svg>
+                    </div>
+                    <h2 className="text-xl font-semibold text-gray-200">
+                      Notlar
+                    </h2>
+                  </div>
+
                   <button
                     onClick={() => setIsAddingNote(true)}
-                    className="text-blue-400 hover:text-blue-300 p-1 rounded-full hover:bg-blue-400/10"
+                    className="flex items-center gap-1 text-blue-400 hover:text-blue-300 px-2 py-1 rounded hover:bg-blue-400/10 transition-colors mr-7"
                   >
                     <svg
                       className="w-4 h-4"
@@ -808,41 +1022,95 @@ const CustomerDetailModal = ({ isOpen, onClose, customer }) => {
                         d="M12 4v16m8-8H4"
                       />
                     </svg>
+                    <span className="text-sm">Yeni Not</span>
                   </button>
                 </div>
+
                 {/* Note adding form */}
                 {isAddingNote && (
-                  <div className="mt-4 space-y-2">
+                  <div className="mt-4 space-y-2 bg-gray-800/50 p-3 rounded-lg border border-gray-700/50 shadow-sm">
                     <textarea
                       value={newNote}
                       onChange={(e) => setNewNote(e.target.value)}
                       placeholder="Notunuzu yazın..."
-                      className="w-full h-24 bg-gray-800 border border-gray-700 rounded-lg p-2 text-gray-300 text-sm resize-none focus:outline-none focus:border-blue-500"
+                      className="w-full h-24 bg-gray-800 border border-gray-700 rounded-lg p-2.5 text-gray-300 text-sm resize-none focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 shadow-inner"
+                      autoFocus
                     />
                     <div className="flex justify-end gap-2">
                       <button
                         onClick={() => setIsAddingNote(false)}
-                        className="px-3 py-1 text-sm text-gray-400 hover:text-gray-300"
+                        className="px-3 py-1.5 text-sm text-gray-400 hover:text-gray-300 border border-transparent hover:border-gray-700 rounded"
                       >
                         İptal
                       </button>
                       <button
                         onClick={handleAddNote}
-                        disabled={notesLoading}
-                        className="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+                        disabled={notesLoading || !newNote.trim()}
+                        className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm"
                       >
-                        {notesLoading ? "Kaydediliyor..." : "Kaydet"}
+                        {notesLoading ? (
+                          <div className="flex items-center gap-1.5">
+                            <svg
+                              className="animate-spin w-3 h-3"
+                              fill="none"
+                              viewBox="0 0 24 24"
+                            >
+                              <circle
+                                className="opacity-25"
+                                cx="12"
+                                cy="12"
+                                r="10"
+                                stroke="currentColor"
+                                strokeWidth="4"
+                              ></circle>
+                              <path
+                                className="opacity-75"
+                                fill="currentColor"
+                                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                              ></path>
+                            </svg>
+                            <span>Kaydediliyor</span>
+                          </div>
+                        ) : (
+                          "Kaydet"
+                        )}
                       </button>
                     </div>
                   </div>
                 )}
               </div>
 
+              {/* Notes List */}
               <div className="space-y-4 mt-4">
                 {customer.notes?.length > 0 ? (
+                  // Enhanced renderNotes implementation would be here
+                  // Using the existing renderNotes function
                   renderNotes()
                 ) : (
-                  <p className="text-gray-500">Not bulunmamaktadır.</p>
+                  <div className="text-center py-8 px-4">
+                    <div className="bg-gray-800/30 rounded-full w-12 h-12 flex items-center justify-center mb-2 mx-auto">
+                      <svg
+                        className="w-6 h-6 text-gray-500"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth="1.5"
+                          d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                        />
+                      </svg>
+                    </div>
+                    <p className="text-gray-500">Not bulunmamaktadır.</p>
+                    <button
+                      onClick={() => setIsAddingNote(true)}
+                      className="mt-2 text-blue-400 hover:text-blue-300 text-sm"
+                    >
+                      İlk notu ekle
+                    </button>
+                  </div>
                 )}
               </div>
             </div>
