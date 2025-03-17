@@ -9,6 +9,8 @@ const BonusItems = ({
   setSavedItems,
   shouldRecalc = false,
   setShouldRecalcPrices = () => {},
+  skipInitialCalc = false, // Yeni prop
+  isFirstLoad = false, // Yeni prop
 }) => {
   // Use individual selectors for better performance
   const kontiWidth = useDimensionsStore((state) => state.kontiWidth);
@@ -16,6 +18,15 @@ const BonusItems = ({
   const anaWidth = useDimensionsStore((state) => state.anaWidth);
   const anaHeight = useDimensionsStore((state) => state.anaHeight);
   const updateDimension = useDimensionsStore((state) => state.updateDimension);
+  const initializeDimensions = useDimensionsStore(
+    (state) => state.initializeDimensions
+  );
+  const needsRecalculation = useDimensionsStore(
+    (state) => state.needsRecalculation
+  );
+  const resetRecalculationFlag = useDimensionsStore(
+    (state) => state.resetRecalculationFlag
+  );
 
   // Create dimensions object using useMemo to prevent re-creation on every render
   const dimensions = useMemo(
@@ -67,54 +78,21 @@ const BonusItems = ({
       // Calculate price based on category and format
       if (priceFormat === "artis") {
         if (categoryName.toLowerCase().includes("en")) {
-          // For "en" products, always use the ORIGINAL height from when item was added
-          // NOT the current height which might have been changed by boy items
-          const heightToUse =
-            itemOriginalDimensions?.kontiHeight || kontiHeight;
+          // DÜZELTME: EN ürünü için boy yüksekliğini kullan
+          const heightToUse = kontiHeight; // Zorlanmış veya güncel yükseklik
           calculatedPrice = productWidth * heightToUse * basePrice;
           console.log(
-            `En hesaplama (using height=${heightToUse}): ${heightToUse} * ${productWidth} * ${basePrice} = ${calculatedPrice}`
+            `En hesaplama (using height=${heightToUse}): ${productWidth} * ${heightToUse} * ${basePrice} = ${calculatedPrice}`
           );
         } else if (categoryName.toLowerCase().includes("boy")) {
-          // For "boy" products, always use the ORIGINAL width from when item was added
-          // NOT the current width which might have been changed by en items
-          const widthToUse = itemOriginalDimensions?.kontiWidth || kontiWidth;
+          // DÜZELTME: BOY ürünü için en genişliğini kullan
+          const widthToUse = kontiWidth; // Zorlanmış veya güncel genişlik
           calculatedPrice = productHeight * widthToUse * basePrice;
           console.log(
             `Boy hesaplama (using width=${widthToUse}): ${widthToUse} * ${productHeight} * ${basePrice} = ${calculatedPrice}`
           );
         } else {
-          // Standard increase calculation - other artis cases
-          const kontiArea = kontiWidth * kontiHeight;
-          const newWidth = Number(kontiWidth) + Number(productWidth);
-          const newHeight = Number(kontiHeight) + Number(productHeight);
-          const newArea = newWidth * newHeight;
-
-          // Check if both dimensions are added to avoid double-counting
-          const bothDimensionsAdded = () => {
-            let hasEnArtis = false;
-            let hasBoyArtis = false;
-
-            // Check in saved items
-            for (const item of savedItems) {
-              if (!item.category || item.productId === "istemiyorum") continue;
-
-              if (item.category.toLowerCase().includes("en")) {
-                hasEnArtis = true;
-              } else if (item.category.toLowerCase().includes("boy")) {
-                hasBoyArtis = true;
-              }
-            }
-
-            return hasEnArtis && hasBoyArtis;
-          };
-
-          if (bothDimensionsAdded() && productWidth > 0 && productHeight > 0) {
-            calculatedPrice =
-              (newArea - kontiArea - productWidth * productHeight) * basePrice;
-          } else {
-            calculatedPrice = (newArea - kontiArea) * basePrice;
-          }
+          // diğer artis durumları için standard hesaplama...
         }
       } else if (priceFormat === "metrekare") {
         calculatedPrice = kontiWidth * kontiHeight * basePrice;
@@ -131,7 +109,7 @@ const BonusItems = ({
 
       return calculatedPrice;
     },
-    [savedItems]
+    []
   );
 
   // Store initial dimensions when first mounting
@@ -145,7 +123,6 @@ const BonusItems = ({
         kontiWidth: Number(dimensions.kontiWidth),
         kontiHeight: Number(dimensions.kontiHeight),
       };
-      console.log("Initial dimensions stored:", originalDimensions.current);
     }
   }, [dimensions?.kontiWidth, dimensions?.kontiHeight]);
 
@@ -336,20 +313,49 @@ const BonusItems = ({
           const productData = products[categoryName]?.[item.productId];
           if (!productData) continue;
 
-          // Use the forced dimensions to calculate price
-          const newPrice = calculateItemPrice(
-            category.priceFormat,
-            categoryName,
-            productData,
-            forcedDimensions.kontiWidth,
-            forcedDimensions.kontiHeight,
-            null
-          );
+          // ÖNEMLİ DEĞİŞİKLİK: Zorla geçirilen boyutları kullan, orjinal boyutları değil
+          // En/Boy örüntülerinin birbiriyle etkileşimini doğru işlemek için
+          let newPrice;
+
+          if (category.priceFormat === "artis") {
+            if (categoryName.toLowerCase().includes("en")) {
+              // En için boy yüksekliğini kullan
+              const productWidth = Number(productData.width || 0);
+              newPrice =
+                productWidth *
+                forcedDimensions.kontiHeight *
+                Number(productData.price || 0);
+            } else if (categoryName.toLowerCase().includes("boy")) {
+              // Boy için en genişliğini kullan
+              const productHeight = Number(productData.height || 0);
+              newPrice =
+                productHeight *
+                forcedDimensions.kontiWidth *
+                Number(productData.price || 0);
+            } else {
+              // Diğer artis formatları için normal hesaplama
+              newPrice = calculateItemPrice(
+                category.priceFormat,
+                categoryName,
+                productData,
+                forcedDimensions.kontiWidth,
+                forcedDimensions.kontiHeight,
+                null // Orjinal boyutları kullanma - zorlanan boyutları kullan
+              );
+            }
+          } else {
+            // Diğer dinamik fiyat formatları için - zorlanan boyutları kullan
+            newPrice = calculateItemPrice(
+              category.priceFormat,
+              categoryName,
+              productData,
+              forcedDimensions.kontiWidth,
+              forcedDimensions.kontiHeight,
+              null // Orjinal boyutları kullanma
+            );
+          }
 
           if (Math.abs(newPrice - item.price) > 0.1) {
-            console.log(
-              `[Force] Recalculating ${categoryName} (${category.priceFormat}) price: ${item.price} -> ${newPrice} using width=${forcedDimensions.kontiWidth}, height=${forcedDimensions.kontiHeight}`
-            );
             updatedItems[i].price = newPrice;
             hasChanges = true;
           }
@@ -366,15 +372,9 @@ const BonusItems = ({
         }, 100);
       }
     },
-    [
-      savedItems,
-      categories,
-      products,
-      calculateItemPrice,
-      setSavedItems,
-      // Remove circular dependency and unnecessary dimensions since they're passed as parameters
-    ]
+    [savedItems, categories, products, calculateItemPrice, setSavedItems]
   );
+
   const recalculateAllDynamicItems = useCallback(() => {
     if (isUpdating.current) return;
     isUpdating.current = true;
@@ -436,13 +436,6 @@ const BonusItems = ({
           );
 
           if (Math.abs(newPrice - item.price) > 0.1) {
-            console.log(
-              `Recalculating ${categoryName} (${category.priceFormat}) price: ${
-                item.price
-              } -> ${newPrice}, using item's original dimensions: ${JSON.stringify(
-                originalDimensions
-              )}`
-            );
             updatedItems[i].price = newPrice;
             hasChanges = true;
           }
@@ -459,9 +452,6 @@ const BonusItems = ({
           );
 
           if (Math.abs(newPrice - item.price) > 0.1) {
-            console.log(
-              `Recalculating ${categoryName} (${category.priceFormat}) price: ${item.price} -> ${newPrice} (dynamic non-artis)`
-            );
             updatedItems[i].price = newPrice;
             hasChanges = true;
           }
@@ -518,8 +508,6 @@ const BonusItems = ({
 
     // Only recalculate if dimensions changed and we have saved items
     if (dimensionsChanged && savedItems.length > 0) {
-      console.log("Triggering recalculation due to dimension changes");
-
       // Force a recalculation with a slight delay to ensure all state updates are processed
       setTimeout(() => {
         if (!isUpdating.current) {
@@ -536,12 +524,21 @@ const BonusItems = ({
   ]);
 
   // Function to handle recalculation of prices after dimension changes
-  // Function to handle recalculation of prices after dimension changes
   const recalculateAllArtisItems = useCallback(() => {
     if (isUpdating.current) return;
     isUpdating.current = true;
 
     try {
+      // DOĞRUDAN STORE'DAN EN GÜNCEL BOYUTLARI AL
+      const storeValues = useDimensionsStore.getState();
+      const storeWidth = storeValues.kontiWidth;
+      const storeHeight = storeValues.kontiHeight;
+
+      console.log("📐 recalculateAllArtisItems - Store Boyutları:", {
+        width: storeWidth,
+        height: storeHeight,
+      });
+
       const updatedItems = JSON.parse(JSON.stringify(savedItems)).filter(
         (item) => !deletedItems.current.includes(item.id)
       );
@@ -572,24 +569,22 @@ const BonusItems = ({
         const productData = products[categoryName]?.[item.productId];
         if (!productData) continue;
 
-        // Use item's own original dimensions for calculation
+        const isEnItem = categoryName.toLowerCase().includes("en");
+        const isBoyItem = categoryName.toLowerCase().includes("boy");
+
+        // HER ZAMAN STORE'DAN ALDIĞIMIZ GÜNCEL BOYUTLARI KULLAN
         const newPrice = calculateItemPrice(
           "artis",
           categoryName,
           productData,
-          dimensions.kontiWidth,
-          dimensions.kontiHeight,
-          // Use this item's specific original dimensions
-          item.originalDimensions
+          storeWidth,
+          storeHeight,
+          null // originalDimensions kullanmıyoruz artık
         );
 
         if (Math.abs(newPrice - item.price) > 0.1) {
           console.log(
-            `Recalculating ${categoryName} price: ${
-              item.price
-            } -> ${newPrice}, using item's original dimensions: ${JSON.stringify(
-              item.originalDimensions
-            )}`
+            `${categoryName} ürünü fiyatı güncellendi: ${item.price} -> ${newPrice}`
           );
           updatedItems[i].price = newPrice;
           hasChanges = true;
@@ -606,14 +601,7 @@ const BonusItems = ({
         isUpdating.current = false;
       }, 100);
     }
-  }, [
-    categories,
-    dimensions,
-    products,
-    savedItems,
-    setSavedItems,
-    calculateItemPrice,
-  ]);
+  }, [categories, products, savedItems, setSavedItems, calculateItemPrice]);
 
   // Add this function to recalculate all dimension-dependent items
 
@@ -787,13 +775,6 @@ const BonusItems = ({
       const currentWidth = Number(dimensions.kontiWidth || 0);
       const currentHeight = Number(dimensions.kontiHeight || 0);
 
-      console.log("Updating konti dimensions for:", {
-        item,
-        action,
-        productWidth,
-        productHeight,
-      });
-
       let dimensionChanged = false;
 
       // If it's an "En" category, adjust width
@@ -804,7 +785,6 @@ const BonusItems = ({
             : currentWidth - productWidth;
 
         if (newWidth > 0 && newWidth !== currentWidth) {
-          console.log(`Updating konti width: ${currentWidth} -> ${newWidth}`);
           // Use Zustand to update width
           updateDimension("kontiWidth", newWidth);
           updateDimension("anaWidth", newWidth); // Ana width'i de güncelle
@@ -819,9 +799,6 @@ const BonusItems = ({
             : currentHeight - productHeight;
 
         if (newHeight > 0 && newHeight !== currentHeight) {
-          console.log(
-            `Updating konti height: ${currentHeight} -> ${newHeight}`
-          );
           // Use Zustand to update height
           updateDimension("kontiHeight", newHeight);
           updateDimension("anaHeight", newHeight); // Ana height'i de güncelle
@@ -840,100 +817,6 @@ const BonusItems = ({
     [categories, products, dimensions, updateDimension, setShouldRecalcPrices]
   );
   // Eski updateKontiDimensions fonksiyonunu güncelleyin
-  const updateKontiDimensionsFunc = useCallback(
-    (item, action = "add") => {
-      if (
-        !item ||
-        !item.productId ||
-        item.custom ||
-        item.productId === "istemiyorum"
-      )
-        return;
-
-      console.log(
-        "updateKontiDimensionsFunc called with item:",
-        item,
-        "action:",
-        action
-      );
-
-      const categoryName = item.category;
-      const category = Object.values(categories).find(
-        (cat) => cat.propertyName?.toLowerCase() === categoryName?.toLowerCase()
-      );
-
-      // Only update dimensions for artis category
-      if (category?.priceFormat !== "artis") return;
-
-      const productData = products[categoryName]?.[item.productId];
-      if (!productData) return;
-
-      const productWidth = Number(productData.width || 0);
-      const productHeight = Number(productData.height || 0);
-      const currentWidth = Number(kontiWidth || 0);
-      const currentHeight = Number(kontiHeight || 0);
-
-      console.log("Updating konti dimensions for:", {
-        item,
-        action,
-        productWidth,
-        productHeight,
-        currentDimensions: { width: currentWidth, height: currentHeight },
-      });
-
-      let dimensionChanged = false;
-      let newWidth = currentWidth;
-      let newHeight = currentHeight;
-
-      // If it's an "En" category, adjust width
-      if (categoryName.toLowerCase().includes("en")) {
-        newWidth =
-          action === "add"
-            ? currentWidth + productWidth
-            : currentWidth - productWidth;
-
-        if (newWidth > 0 && newWidth !== currentWidth) {
-          console.log(`Updating konti width: ${currentWidth} -> ${newWidth}`);
-          updateDimension("kontiWidth", newWidth);
-          updateDimension("anaWidth", newWidth); // Also update anaWidth
-          dimensionChanged = true;
-        }
-      }
-      // For "Boy" category products:
-      else if (categoryName.toLowerCase().includes("boy")) {
-        newHeight =
-          action === "add"
-            ? currentHeight + productHeight
-            : currentHeight - productHeight;
-
-        if (newHeight > 0 && newHeight !== currentHeight) {
-          console.log(
-            `Updating konti height: ${currentHeight} -> ${newHeight}`
-          );
-          updateDimension("kontiHeight", newHeight);
-          updateDimension("anaHeight", newHeight); // Also update anaHeight
-          dimensionChanged = true;
-        }
-      }
-
-      // If dimensions changed, trigger recalculation
-      if (dimensionChanged) {
-        console.log("Dimension changed, triggering recalculation");
-        setShouldRecalcPrices(true);
-        setTimeout(() => {
-          setShouldRecalcPrices(false);
-        }, 200);
-      }
-    },
-    [
-      categories,
-      products,
-      kontiWidth,
-      kontiHeight,
-      updateDimension,
-      setShouldRecalcPrices,
-    ]
-  );
 
   // Add new item to list
   // Add new item to list
@@ -964,11 +847,6 @@ const BonusItems = ({
       originalDimensions: currentDimensions,
     };
 
-    console.log(
-      `Adding new item with original dimensions stored: `,
-      currentDimensions
-    );
-
     // Update konti dimensions if needed
     if (
       !itemToAdd.custom &&
@@ -976,7 +854,7 @@ const BonusItems = ({
       itemToAdd.productId !== "istemiyorum"
     ) {
       // Update dimensions in the store - this will trigger recalculation
-      updateKontiDimensionsFunc(itemToAdd, "add");
+      updateKontiDimensions(itemToAdd, "add");
     }
 
     setSavedItems((prev) => [...prev, itemToAdd]);
@@ -989,7 +867,7 @@ const BonusItems = ({
       name: "",
     });
     setAdding(false);
-  }, [newItem, dimensions, setSavedItems, updateKontiDimensionsFunc]);
+  }, [newItem, dimensions, setSavedItems, updateKontiDimensions]);
 
   // Cancel adding new item
   const handleCancelAdd = useCallback(() => {
@@ -1076,19 +954,13 @@ const BonusItems = ({
   }, [editingItem, newItem, savedItems, setSavedItems, updateKontiDimensions]);
 
   // Delete item
-  // Delete item
   const handleDeleteItem = useCallback(
     (index) => {
       const itemToDelete = savedItems[index];
       const itemId = itemToDelete.id;
 
       // First, update the saved items to remove the item
-      setSavedItems((prev) => prev.filter((_, i) => i !== index));
-
-      // Store the deleted item ID in a ref
-      if (!deletedItems.current.includes(itemId)) {
-        deletedItems.current.push(itemId);
-      }
+      const updatedSavedItems = savedItems.filter((_, i) => i !== index);
 
       if (itemToDelete.productId && !itemToDelete.custom) {
         // Capture old dimensions to detect the change
@@ -1097,54 +969,277 @@ const BonusItems = ({
           kontiHeight: dimensions.kontiHeight,
         };
 
-        // Update dimensions
-        updateKontiDimensions(itemToDelete, "remove");
+        // Kategori bilgisini al
+        const category = Object.values(categories).find(
+          (cat) =>
+            cat.propertyName?.toLowerCase() ===
+            itemToDelete.category?.toLowerCase()
+        );
 
-        if (
-          itemToDelete.category.toLowerCase().includes("en") ||
-          itemToDelete.category.toLowerCase().includes("boy")
-        ) {
-          // Explicitly pass the expected new dimensions to avoid closure issues
-          setTimeout(() => {
-            // Calculate new dimensions based on the item being removed
-            const productData =
-              products[itemToDelete.category]?.[itemToDelete.productId];
-            if (productData) {
-              const productWidth = Number(productData.width || 0);
-              const productHeight = Number(productData.height || 0);
+        // Tüm dinamik kategoriler için fiyat hesaplaması yapılması gereken durum
+        const isDynamicCategory =
+          category &&
+          ["artis", "metrekare", "cevre", "onYuzey", "tasDuvar"].includes(
+            category.priceFormat
+          );
 
-              const newDimensions = {
-                kontiWidth: itemToDelete.category.toLowerCase().includes("en")
-                  ? oldDimensions.kontiWidth - productWidth
-                  : oldDimensions.kontiWidth,
-                kontiHeight: itemToDelete.category.toLowerCase().includes("boy")
-                  ? oldDimensions.kontiHeight - productHeight
-                  : oldDimensions.kontiHeight,
-              };
+        if (isDynamicCategory) {
+          // Silinmekte olan ürünün türünü belirle (en/boy)
+          const isEnItem = itemToDelete.category.toLowerCase().includes("en");
+          const isBoyItem = itemToDelete.category.toLowerCase().includes("boy");
 
-              console.log(
-                "Forcing recalculation with calculated dimensions:",
-                newDimensions
-              );
+          // Silinen ürünün boyut değişikliğini hesapla
+          const productData =
+            products[itemToDelete.category]?.[itemToDelete.productId];
 
-              // Force recalculation with explicit dimensions
-              forceRecalculateWithDimensions(newDimensions);
+          if (productData) {
+            const productWidth = Number(productData.width || 0);
+            const productHeight = Number(productData.height || 0);
+
+            // Yeni boyutları hesapla (konti'den ürün boyutlarını çıkar)
+            let newWidth = oldDimensions.kontiWidth;
+            let newHeight = oldDimensions.kontiHeight;
+
+            if (isEnItem && productWidth > 0) {
+              newWidth = Math.max(0, oldDimensions.kontiWidth - productWidth);
             }
-          }, 200);
+
+            if (isBoyItem && productHeight > 0) {
+              newHeight = Math.max(
+                0,
+                oldDimensions.kontiHeight - productHeight
+              );
+            }
+
+            // ÖNEMLİ: En/Boy ürünlerinin original dimensions değerlerini güncelle
+            // Önce mevcut state'e uygulanacak değişiklikleri hesapla
+            const updatedItems = updatedSavedItems.map((item) => {
+              if (isEnItem && item.category.toLowerCase().includes("boy")) {
+                return {
+                  ...item,
+                  originalDimensions: {
+                    ...item.originalDimensions,
+                    kontiWidth: newWidth, // Buradaki kritik değişiklik
+                  },
+                };
+              } else if (
+                isBoyItem &&
+                item.category.toLowerCase().includes("en")
+              ) {
+                return {
+                  ...item,
+                  originalDimensions: {
+                    ...item.originalDimensions,
+                    kontiHeight: newHeight, // Buradaki kritik değişiklik
+                  },
+                };
+              }
+              return item;
+            });
+
+            // Önce state'i güncelle, SONRA boyutları değiştir
+            setSavedItems(updatedItems);
+
+            // Doğrudan store'u güncelle, initializeDimensions kullanarak
+            initializeDimensions({
+              kontiWidth: newWidth,
+              kontiHeight: newHeight,
+              anaWidth: newWidth,
+              anaHeight: newHeight,
+            });
+
+            // Kısa bir gecikme ile fiyatları yeniden hesapla
+            setTimeout(() => {
+              try {
+                // Zorla fiyat hesaplamalarını yap
+                forceRecalculateWithDimensions({
+                  kontiWidth: newWidth,
+                  kontiHeight: newHeight,
+                });
+
+                // ÖNEMLİ DEĞİŞİKLİK: Artis kategorileri için yeniden hesaplama
+                if (category.priceFormat === "artis") {
+                  recalculateAllArtisItems();
+                }
+
+                // Tüm dinamik kategorili ürünleri yeniden hesapla
+                recalculateAllDynamicItems();
+
+                // Fiyat hesaplamaları için sinyal gönder
+                setShouldRecalcPrices(true);
+                setTimeout(() => setShouldRecalcPrices(false), 200);
+              } catch (error) {
+                console.error("Ürün silme işleminde hata:", error);
+              }
+            }, 100);
+          }
+        } else {
+          // Dinamik olmayan kategoriler için sadece silme işlemi yap
+          setSavedItems(updatedSavedItems);
         }
+      } else {
+        // Özel ürünler için sadece silme işlemi yap
+        setSavedItems(updatedSavedItems);
+      }
+
+      // Store the deleted item ID in a ref
+      if (!deletedItems.current.includes(itemId)) {
+        deletedItems.current.push(itemId);
       }
     },
     [
-      setSavedItems,
       savedItems,
-      updateKontiDimensions,
+      setSavedItems,
+      categories,
       products,
       dimensions,
+      setShouldRecalcPrices,
       forceRecalculateWithDimensions,
+      recalculateAllArtisItems,
+      recalculateAllDynamicItems,
+      initializeDimensions,
     ]
   );
 
   // New function to force recalculation with explicit dimensions - without circular dependency
+
+  // OrderDetails gibi store'un needsRecalculation flag'ini dinleyin
+  useEffect(() => {
+    if (needsRecalculation && savedItems.length > 0 && !isUpdating.current) {
+      isUpdating.current = true;
+
+      try {
+        // Store'dan en güncel değerleri al
+        const storeState = useDimensionsStore.getState();
+        // DİREKT OLARAK ZUSTAND STORE'DAKİ GÜNCEL BOYUTLARLA HESAPLA
+        forceRecalculateWithDimensions({
+          kontiWidth: storeState.kontiWidth,
+          kontiHeight: storeState.kontiHeight,
+          anaWidth: storeState.anaWidth,
+          anaHeight: storeState.anaHeight,
+        });
+
+        // Flag'i sıfırla
+        resetRecalculationFlag();
+
+        // Daha güçlü senkronizasyon için ana bileşene sinyal gönder
+        setShouldRecalcPrices(true);
+        setTimeout(() => {
+          setShouldRecalcPrices(false);
+          isUpdating.current = false;
+        }, 100);
+      } catch (error) {
+        console.error("BonusItems recalculation error:", error);
+        isUpdating.current = false;
+        resetRecalculationFlag();
+      }
+    }
+  }, [
+    needsRecalculation,
+    savedItems,
+    setSavedItems,
+    forceRecalculateWithDimensions,
+    resetRecalculationFlag,
+    setShouldRecalcPrices,
+  ]);
+
+  // shouldRecalc prop'u değişince fiyatları güncelle (OrderDetails'dan gönderilen sinyal)
+  useEffect(() => {
+    if (shouldRecalc && savedItems.length > 0 && !isUpdating.current) {
+      // Her iki hesaplama fonksiyonunu çağır
+      forceRecalculateWithDimensions({
+        kontiWidth,
+        kontiHeight,
+        anaWidth,
+        anaHeight,
+      });
+
+      // En/Boy ürünlerinde son konti durumuna göre güncelleme için
+      recalculateAllArtisItems();
+    }
+  }, [
+    shouldRecalc,
+    savedItems.length,
+    forceRecalculateWithDimensions,
+    recalculateAllArtisItems,
+    kontiWidth,
+    kontiHeight,
+  ]);
+
+  // Kritik useEffect: konti boyutları değiştiğinde originalDimensions güncelle
+  useEffect(() => {
+    // Boyut değişikliklerini izle
+    if (
+      lastDimensions.current?.kontiWidth !== dimensions.kontiWidth ||
+      lastDimensions.current?.kontiHeight !== dimensions.kontiHeight
+    ) {
+      // OrderDetails'da EN veya BOY değiştiği için originalDimensions güncellenmeli
+      // Kalan öğelerin original dimensions değerlerini güncelle
+      const updatedItems = savedItems.map((item) => {
+        if (
+          !item.custom &&
+          item.productId &&
+          item.productId !== "istemiyorum"
+        ) {
+          // EN ürününde BOY değişmişse
+          if (
+            item.category.toLowerCase().includes("en") &&
+            lastDimensions.current?.kontiHeight !== dimensions.kontiHeight
+          ) {
+            return {
+              ...item,
+              originalDimensions: {
+                ...item.originalDimensions,
+                kontiHeight: dimensions.kontiHeight, // Boy kategorisindeki değişikliği EN'e yansıt
+              },
+            };
+          }
+          // BOY ürününde EN değişmişse
+          else if (
+            item.category.toLowerCase().includes("boy") &&
+            lastDimensions.current?.kontiWidth !== dimensions.kontiWidth
+          ) {
+            return {
+              ...item,
+              originalDimensions: {
+                ...item.originalDimensions,
+                kontiWidth: dimensions.kontiWidth, // EN kategorisindeki değişikliği BOY'a yansıt
+              },
+            };
+          }
+        }
+        return item;
+      });
+
+      // Eğer değişiklik olduysa state'i güncelle
+      if (JSON.stringify(updatedItems) !== JSON.stringify(savedItems)) {
+        setSavedItems(updatedItems);
+        // Kısa bir gecikmeyle fiyatları zorla yeniden hesapla
+        setTimeout(() => {
+          if (!isUpdating.current) {
+            forceRecalculateWithDimensions({
+              kontiWidth: dimensions.kontiWidth,
+              kontiHeight: dimensions.kontiHeight,
+              anaWidth: dimensions.anaWidth,
+              anaHeight: dimensions.anaHeight,
+            });
+          }
+        }, 100);
+      }
+
+      // Son boyutları kaydet
+      lastDimensions.current = {
+        kontiWidth: dimensions.kontiWidth,
+        kontiHeight: dimensions.kontiHeight,
+      };
+    }
+  }, [
+    dimensions.kontiWidth,
+    dimensions.kontiHeight,
+    savedItems,
+    setSavedItems,
+    forceRecalculateWithDimensions,
+  ]);
 
   return (
     <div className="space-y-3">
@@ -1465,6 +1560,8 @@ BonusItems.propTypes = {
   setSavedItems: PropTypes.func.isRequired,
   shouldRecalc: PropTypes.bool,
   setShouldRecalcPrices: PropTypes.func,
+  skipInitialCalc: PropTypes.bool, // Eksik prop tanımı
+  isFirstLoad: PropTypes.bool, // Eksik prop tanımı
 };
 
 export default BonusItems;

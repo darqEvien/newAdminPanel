@@ -61,8 +61,6 @@ const OrderDetails = ({
     isUpdating.current = true;
 
     try {
-      console.log("Dinamik ürün fiyatları hesaplanıyor...");
-
       // Desteklenen tüm dinamik fiyat formatları
       const dynamicPriceFormats = [
         "tasDuvar",
@@ -212,17 +210,11 @@ const OrderDetails = ({
                 const heightToUse =
                   product.originalDimensions?.kontiHeight || kontiHeight;
                 newPrice = heightToUse * productWidth * basePrice;
-                console.log(
-                  `OrderDetails - En hesaplama: ${heightToUse} * ${productWidth} * ${basePrice} = ${newPrice} (using original height)`
-                );
               } else if (categoryName.toLowerCase().includes("boy")) {
                 // Boy artis: ORIJINAL konti genişliği * ürün yüksekliği * birim fiyat
                 const widthToUse =
                   product.originalDimensions?.kontiWidth || kontiWidth;
                 newPrice = widthToUse * productHeight * basePrice;
-                console.log(
-                  `OrderDetails - Boy hesaplama: ${widthToUse} * ${productHeight} * ${basePrice} = ${newPrice} (using original width)`
-                );
               } else {
                 // Diğer artis durumları için calculatePrice kullan
                 newPrice = calculatePrice({
@@ -247,11 +239,6 @@ const OrderDetails = ({
 
           // Fiyat değiştiyse güncelle (0.1'den büyük farklar için)
           if (Math.abs(newPrice - product.price) > 0.1) {
-            console.log(
-              `${categoryName} > ${
-                product.name || product.productCollectionId
-              } fiyatı güncellendi: ${product.price} -> ${newPrice}`
-            );
             updatedOrderData[categoryName][idx] = {
               ...product,
               price: newPrice,
@@ -263,9 +250,6 @@ const OrderDetails = ({
 
       // Değişiklik varsa state'i güncelle
       if (hasChanges) {
-        console.log(
-          "Sipariş verileri güncelleniyor - fiyat değişiklikleri var"
-        );
         setLocalOrderData(updatedOrderData);
       }
     } catch (error) {
@@ -302,10 +286,6 @@ const OrderDetails = ({
       });
 
       initializedRef.current = true;
-      console.log(
-        "OrderDetails - Boyutlar başlangıçta ayarlandı:",
-        orderDimensions
-      );
     }
   }, [localOrderData, initializeDimensions]);
 
@@ -315,11 +295,6 @@ const OrderDetails = ({
       lastDimensions.current.kontiWidth !== kontiWidth ||
       lastDimensions.current.kontiHeight !== kontiHeight
     ) {
-      console.log("OrderDetails - Konti boyutları değişti:", {
-        from: lastDimensions.current,
-        to: { kontiWidth, kontiHeight },
-      });
-
       // Referansı güncelle
       lastDimensions.current = { kontiWidth, kontiHeight };
 
@@ -337,7 +312,6 @@ const OrderDetails = ({
       Object.keys(localOrderData).length > 0 &&
       !isUpdating.current
     ) {
-      console.log("OrderDetails - Store'dan recalculation flag'i algılandı");
       recalculatePrices();
       resetRecalculationFlag();
     }
@@ -355,7 +329,6 @@ const OrderDetails = ({
       Object.keys(localOrderData).length > 0 &&
       !isUpdating.current
     ) {
-      console.log("OrderDetails - shouldRecalc prop'u tetiklendi");
       recalculatePrices();
     }
   }, [shouldRecalc, localOrderData, recalculatePrices]);
@@ -601,20 +574,12 @@ const OrderDetails = ({
                 currentKontiHeight *
                 newWidth *
                 Number(productData?.price || basePrice);
-
-              console.log(
-                `OrderDetails - En ürünü ekleniyor. Fiyat hesabı: ${currentKontiHeight} * ${newWidth} * ${basePrice} = ${calculatedPrice}`
-              );
             } else if (categoryName.toLowerCase().includes("boy")) {
               // Boy artis için MEVCUT genişliği kullanıyoruz (en artis etkilediyse o değeri)
               calculatedPrice =
                 currentKontiWidth *
                 newHeight *
                 Number(productData?.price || basePrice);
-
-              console.log(
-                `OrderDetails - Boy ürünü ekleniyor. Fiyat hesabı: ${currentKontiWidth} * ${newHeight} * ${basePrice} = ${calculatedPrice}`
-              );
             }
           }
 
@@ -777,8 +742,6 @@ const OrderDetails = ({
   // Ürün sil
   const handleDelete = useCallback(
     (categoryName, productIndex) => {
-      console.log(`Ürün siliniyor: ${categoryName}-${productIndex}`);
-
       const productToDelete = localOrderData[categoryName]?.[productIndex];
       if (!productToDelete) return;
 
@@ -810,17 +773,11 @@ const OrderDetails = ({
 
         if (categoryName.toLowerCase().includes("en") && currentWidth > 0) {
           updatedWidth = Math.max(0, dimensions.kontiWidth - currentWidth);
-          console.log(
-            `OrderDetails - En ürünü siliniyor. Yeni genişlik: ${updatedWidth}`
-          );
         } else if (
           categoryName.toLowerCase().includes("boy") &&
           currentHeight > 0
         ) {
           updatedHeight = Math.max(0, dimensions.kontiHeight - currentHeight);
-          console.log(
-            `OrderDetails - Boy ürünü siliniyor. Yeni yükseklik: ${updatedHeight}`
-          );
         }
 
         const dimensionsChanged =

@@ -41,6 +41,8 @@ const OrderEditModal = ({
   const [savedItems, setSavedItems] = useState([]);
   const [notes, setNotes] = useState(orderData.notes || "");
   const [shouldRecalcPrices, setShouldRecalcPrices] = useState(false);
+  // İlk yükleme için hesaplama atlama bayrağı ekleniyor
+  const [skipInitialCalc, setSkipInitialCalc] = useState(true);
 
   // OrderDetails state'leri
   const [editingItem, setEditingItem] = useState(null);
@@ -89,6 +91,7 @@ const OrderEditModal = ({
 
   // İlk yüklemede dimensions'ı Zustand store'una aktar
   const initializedRef = useRef(false);
+  const firstLoadRef = useRef(true); // Yeni ref ekleyin
 
   useEffect(() => {
     if (isOpen && initialDimensions && !initializedRef.current) {
@@ -96,20 +99,74 @@ const OrderEditModal = ({
         "Initializing dimensions from initialDimensions:",
         initialDimensions
       );
+
+      // İlk yükleme olduğunu belirtelim
+      firstLoadRef.current = true;
+
+      // Sessizce boyutları güncelle - fiyat hesaplaması tetiklemeden
       initializeDimensions(initialDimensions);
       initializedRef.current = true;
 
-      // LocalOrderData'yı da güncelle
+      // LocalOrderData'yı da güncelle ama fiyat hesaplamadan
       setLocalOrderData((prev) => ({
         ...prev,
         dimensions: initialDimensions,
       }));
+
+      // Bir sonraki render döngüsünde ilk yükleme bayrağını kaldırıyoruz
+      setTimeout(() => {
+        firstLoadRef.current = false;
+      }, 500);
     }
   }, [isOpen, initialDimensions, initializeDimensions]);
+
+  // Konti boyut değişikliklerini izleyen useEffect
+  const prevKontiWidth = useRef(kontiWidth);
+  const prevKontiHeight = useRef(kontiHeight);
+
+  useEffect(() => {
+    // İlk yükleme veya modal kapalıysa değişikliği işleme
+    if (!initializedRef.current || !isOpen || firstLoadRef.current) {
+      // Sadece referans değerleri güncelle ama fiyat hesaplama yapma
+      prevKontiWidth.current = kontiWidth;
+      prevKontiHeight.current = kontiHeight;
+      return;
+    }
+
+    // Boyutların değişip değişmediğini kontrol et
+    if (
+      prevKontiWidth.current !== kontiWidth ||
+      prevKontiHeight.current !== kontiHeight
+    ) {
+      // Manuel olarak tetiklenmiş bir boyut değişikliği - hesaplama yap
+      if (skipInitialCalc) setSkipInitialCalc(false);
+      useDimensionsStore.setState({
+        kontiWidth: kontiWidth,
+        kontiHeight: kontiHeight,
+        anaWidth: kontiWidth,
+        anaHeight: kontiHeight,
+        needsRecalculation: true, // Recalculation flag'ini aktifleştir
+      });
+
+      setShouldRecalcPrices(true);
+
+      // Zaman aşımından sonra bayrağı sıfırla
+      setTimeout(() => setShouldRecalcPrices(false), 100);
+
+      // Güncel değerleri sakla
+      prevKontiWidth.current = kontiWidth;
+      prevKontiHeight.current = kontiHeight;
+    }
+  }, [kontiWidth, kontiHeight, isOpen, skipInitialCalc]);
+
+  // DEBUG: OrderDetails ve BonusItems arasındaki senkronizasyonu kontrol et
 
   // Fiyatları yenileme fonksiyonu
   const handleRefreshPrices = async () => {
     try {
+      // Manuel fiyat yenileme işleminde artık ilk hesaplamayı atlamıyoruz
+      if (skipInitialCalc) setSkipInitialCalc(false);
+
       const loadingToast = toast.loading("Fiyatlar güncelleniyor...");
       setShouldRecalcPrices(true);
 
@@ -496,6 +553,8 @@ const OrderEditModal = ({
                         setLocalOrderData={setLocalOrderData}
                         shouldRecalc={shouldRecalcPrices}
                         setShouldRecalcPrices={setShouldRecalcPrices}
+                        skipInitialCalc={skipInitialCalc} // Yeni prop ekleme
+                        isFirstLoad={firstLoadRef.current}
                       />
                     </div>
 
@@ -512,6 +571,8 @@ const OrderEditModal = ({
                           setSavedItems={setSavedItems}
                           shouldRecalc={shouldRecalcPrices}
                           setShouldRecalcPrices={setShouldRecalcPrices}
+                          skipInitialCalc={skipInitialCalc} // Yeni prop ekleme
+                          isFirstLoad={firstLoadRef.current}
                         />
                       </div>
                     </div>
