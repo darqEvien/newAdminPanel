@@ -322,22 +322,51 @@ const OrdersPage = () => {
               <div>
                 <h1 className="text-3xl font-bold flex items-center gap-3">
                   <svg
-                    className="w-8 h-8 text-blue-200"
-                    fill="none"
-                    stroke="currentColor"
+                    className="w-10 h-10 text-blue-200"
                     viewBox="0 0 24 24"
+                    fill="none"
+                    xmlns="http://www.w3.org/2000/svg"
                   >
-                    <path
+                    {/* Container House */}
+                    <rect
+                      x="3"
+                      y="10"
+                      width="18"
+                      height="10"
+                      rx="1"
                       strokeLinecap="round"
                       strokeLinejoin="round"
-                      strokeWidth="2"
-                      d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"
+                      strokeWidth="1.5"
+                      stroke="currentColor"
+                    />
+                    {/* Kapı */}
+                    <rect
+                      x="9"
+                      y="14"
+                      width="3.5"
+                      height="6"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth="1.5"
+                      stroke="currentColor"
+                    />
+                    {/* Pencere */}
+                    <rect
+                      x="15"
+                      y="14"
+                      width="3"
+                      height="3"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth="1.5"
+                      stroke="currentColor"
                     />
                   </svg>
                   Prefabric Crafter
                 </h1>
                 <p className="mt-1.5 text-blue-100">
-                  Sipariş yönetimini kolaylaştırın, müşterilerinizi memnun edin.
+                  Prefabric Crafterdan gelen siparişleri görüntüleyin ve
+                  yönetin.
                 </p>
               </div>
 

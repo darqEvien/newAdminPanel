@@ -235,16 +235,44 @@ const Sidebar = () => {
                 }`}
             >
               <svg
-                className="w-5 h-5"
-                fill="none"
-                stroke="currentColor"
+                className="w-5 h-5 text-blue-200"
                 viewBox="0 0 24 24"
+                fill="none"
+                xmlns="http://www.w3.org/2000/svg"
               >
-                <path
+                {/* Container House */}
+                <rect
+                  x="3"
+                  y="10"
+                  width="18"
+                  height="10"
+                  rx="1"
                   strokeLinecap="round"
                   strokeLinejoin="round"
-                  strokeWidth="2"
-                  d="M10 21h7a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v11m0 5l4.879-4.879m0 0a3 3 0 104.243-4.242 3 3 0 00-4.243 4.242z"
+                  strokeWidth="1.5"
+                  stroke="currentColor"
+                />
+                {/* Kapı */}
+                <rect
+                  x="9"
+                  y="14"
+                  width="3.5"
+                  height="6"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="1.5"
+                  stroke="currentColor"
+                />
+                {/* Pencere */}
+                <rect
+                  x="15"
+                  y="14"
+                  width="3"
+                  height="3"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="1.5"
+                  stroke="currentColor"
                 />
               </svg>
               <span className="font-medium">Prefabric Crafter</span>
