@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { ref, get, set, update } from "firebase/database";
 import { database } from "../../firebase/firebaseConfig";
 import OrderEditModal from "./OrderEditModal";
+import ReactDOM from "react-dom";
 
 const ensureNotesArray = (notes) => {
   if (!notes) return [];
@@ -108,6 +109,34 @@ const CustomerDetailModal = ({ isOpen, onClose, customer }) => {
       console.error("Error adding existing order:", error);
     }
   };
+  // Yeni sipariş oluştur fonksiyonu
+  const handleCreateNewOrder = () => {
+    // Yeni boş bir sipariş oluştur
+    const newOrderKey = `new-${Date.now()}`;
+
+    // Varsayılan/boş sipariş verisi oluştur
+    const emptyOrderData = {
+      konti: [], // Boş konti listesi
+    };
+
+    // Sipariş düzenleme modalını aç
+    setEditingOrder({
+      key: newOrderKey,
+      data: emptyOrderData,
+      dimensions: customer.dimensions || { kontiWidth: 0, kontiHeight: 0 },
+      sourceCustomer: {
+        fullName: customer.fullName,
+        email: customer.email,
+        phone: customer.phone,
+      },
+      type: "main",
+      isNewOrder: true, // Yeni sipariş olduğunu belirt
+    });
+
+    // Sipariş seçenekleri menüsünü kapat
+    setShowOrderOptions(false);
+  };
+
   // Edit butonunun onClick fonksiyonunu güncelleyelim
   const handleEditOrder = (
     orderKey,
@@ -457,7 +486,25 @@ const CustomerDetailModal = ({ isOpen, onClose, customer }) => {
 
     return count;
   };
+  // Bu kodu diğer useEffect'lerin yanına ekleyin
+  useEffect(() => {
+    if (showOrderOptions) {
+      const handleClickOutside = (event) => {
+        // Eğer tıklanan eleman "Yeni Sipariş Ekle" menüsü veya içindeki elemanlar değilse
+        if (
+          !event.target.closest("#new-order-options") &&
+          !event.target.closest("#new-order-button")
+        ) {
+          setShowOrderOptions(false);
+        }
+      };
 
+      document.addEventListener("mousedown", handleClickOutside);
+      return () => {
+        document.removeEventListener("mousedown", handleClickOutside);
+      };
+    }
+  }, [showOrderOptions]);
   const renderProducts = () => {
     const allOrders = [];
 
@@ -901,8 +948,12 @@ const CustomerDetailModal = ({ isOpen, onClose, customer }) => {
 
                     {/* Add New Order Card */}
                     <div
+                      id="new-order-button"
                       className="bg-gradient-to-b from-gray-800/50 to-gray-800/30 rounded-lg overflow-hidden border border-gray-700/60 border-dashed hover:border-blue-500/40 transition-all duration-300 group cursor-pointer"
-                      onClick={() => setShowOrderOptions(true)}
+                      onClick={(e) => {
+                        e.stopPropagation(); // Bu satırı ekleyin
+                        setShowOrderOptions(true);
+                      }}
                     >
                       <div className="flex flex-col items-center justify-center h-full p-8 relative">
                         <div className="h-14 w-14 rounded-full bg-gray-700/40 group-hover:bg-blue-600/20 flex items-center justify-center mb-3 transition-colors duration-300">
@@ -925,11 +976,36 @@ const CustomerDetailModal = ({ isOpen, onClose, customer }) => {
                         </span>
 
                         {showOrderOptions && (
-                          <div className="absolute top-full left-1/2 -translate-x-1/2 mt-3 bg-gray-800 rounded-lg shadow-xl p-1 min-w-[220px] border border-gray-700 z-10">
+                          <div
+                            id="new-order-options"
+                            className="fixed bg-gray-800 rounded-lg shadow-xl p-1 min-w-[220px] border border-gray-700 z-[9999]"
+                            style={{
+                              top: "auto", // Top değerini sıfırlayalım
+                              left: "auto", // Left değerini sıfırlayalım
+                              position: "fixed", // Modal içindeki herhangi bir relative elementten etkilenmemesi için fixed kullanıyoruz
+                            }}
+                            ref={(el) => {
+                              // Menu elemanını konumlandırmak için buton referansını alalım
+                              if (
+                                el &&
+                                document.getElementById("new-order-button")
+                              ) {
+                                const buttonRect = document
+                                  .getElementById("new-order-button")
+                                  .getBoundingClientRect();
+                                el.style.top = `${buttonRect.bottom + 10}px`; // Butonun alt kısmından 10px aşağıda
+                                el.style.left = `${
+                                  buttonRect.left +
+                                  buttonRect.width / 2 -
+                                  el.offsetWidth / 2
+                                }px`; // Butonun ortasına hizala
+                              }
+                            }}
+                          >
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
-                                // Yeni sipariş oluştur
+                                handleCreateNewOrder();
                               }}
                               className="w-full text-left px-4 py-2.5 text-gray-300 hover:bg-gray-700 rounded-md flex items-center gap-2"
                             >

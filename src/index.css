@@ -10,7 +10,42 @@ body {
     text-rendering: optimizeLegibility;
 }
 
-/* Scrollbar Styling */
+.scroll-smooth {
+    scroll-behavior: smooth;
+}
+
+/* Modern Scrollbar Stilleri */
+.hover-scrollbar::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+
+.hover-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+    border-radius: 8px;
+    margin: 2px;
+}
+
+.hover-scrollbar::-webkit-scrollbar-thumb {
+    background: rgba(99, 102, 241, 0.2);
+    border-radius: 8px;
+    transition: all 0.2s ease;
+}
+
+.hover-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: rgba(99, 102, 241, 0.6);
+}
+
+/* Varsayılan olarak scrollbar'ı hafif saydamlaştır */
+.hover-scrollbar::-webkit-scrollbar-thumb {
+    opacity: 0.5;
+}
+
+/* Hover durumunda tam opaklık */
+.hover-scrollbar:hover::-webkit-scrollbar-thumb {
+    opacity: 1;
+}
+
 /* Scrollbar Styling */
 .custom-scrollbar::-webkit-scrollbar {
     width: 6px;
