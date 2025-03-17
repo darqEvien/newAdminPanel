@@ -1,6 +1,7 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useCallback, useEffect, useRef, useMemo, useState } from "react";
 import PropTypes from "prop-types";
-import { useDimensionsStore } from "../../store/dimensionsStore"; // Import as named export
+import { calculatePrice } from "../../utils/priceCalculator";
+import { useDimensionsStore } from "../../store/dimensionsStore";
 
 const BonusItems = ({
   categories,
@@ -9,15 +10,13 @@ const BonusItems = ({
   setSavedItems,
   shouldRecalc = false,
   setShouldRecalcPrices = () => {},
-  skipInitialCalc = false, // Yeni prop
-  isFirstLoad = false, // Yeni prop
+  skipInitialCalc = false,
 }) => {
-  // Use individual selectors for better performance
+  // Zustand store'dan değerleri al
   const kontiWidth = useDimensionsStore((state) => state.kontiWidth);
   const kontiHeight = useDimensionsStore((state) => state.kontiHeight);
   const anaWidth = useDimensionsStore((state) => state.anaWidth);
   const anaHeight = useDimensionsStore((state) => state.anaHeight);
-  const updateDimension = useDimensionsStore((state) => state.updateDimension);
   const initializeDimensions = useDimensionsStore(
     (state) => state.initializeDimensions
   );
@@ -28,17 +27,7 @@ const BonusItems = ({
     (state) => state.resetRecalculationFlag
   );
 
-  // Create dimensions object using useMemo to prevent re-creation on every render
-  const dimensions = useMemo(
-    () => ({
-      kontiWidth,
-      kontiHeight,
-      anaWidth,
-      anaHeight,
-    }),
-    [kontiWidth, kontiHeight, anaWidth, anaHeight]
-  );
-
+  // UI state
   const [adding, setAdding] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
   const [newItem, setNewItem] = useState({
@@ -50,562 +39,806 @@ const BonusItems = ({
     name: "",
   });
 
-  // Refs for tracking calculation state
-  const isInitialMount = useRef(true);
-  const initialCalcDone = useRef(false);
+  // Referanslar
   const isUpdating = useRef(false);
-  const originalDimensions = useRef(null);
-  const lastDimensions = useRef(null); // Track last dimensions to detect changes
-  const previousSavedItems = useRef([]); // Track previous items
+  const initializedRef = useRef(false);
+  const lastDimensions = useRef({ kontiWidth, kontiHeight });
   const deletedItems = useRef([]);
-  const calculateItemPrice = useCallback(
-    (
-      priceFormat,
-      categoryName,
-      productData,
+
+  // Memoized dimensions
+  const dimensions = useMemo(
+    () => ({
       kontiWidth,
       kontiHeight,
-      itemOriginalDimensions = null
-    ) => {
-      // Use current dimensions for calculations
+      anaWidth,
+      anaHeight,
+    }),
+    [kontiWidth, kontiHeight, anaWidth, anaHeight]
+  );
+
+  // Ürün bilgilerini al (ID ile)
+  const getProductData = useCallback(
+    (categoryName, productId) => {
+      if (!categoryName || !productId || !products[categoryName]) return null;
+      return products[categoryName][productId] || null;
+    },
+    [products]
+  );
+
+  // Kategori bilgisini al (isim ile)
+  const getCategoryData = useCallback(
+    (categoryName) => {
+      if (!categoryName) return null;
+      return Object.values(categories).find(
+        (cat) => cat.propertyName?.toLowerCase() === categoryName?.toLowerCase()
+      );
+    },
+    [categories]
+  );
+
+  // Artis kategorisindeki öğeler için fiyat hesaplama - ÖNEMLİ YENİ FONKSİYON
+  const calculateArtisPrice = useCallback(
+    (item, useCurrentDimensions = false) => {
+      const categoryName = item.category;
+      const productId = item.productId;
+      const category = getCategoryData(categoryName);
+
+      // Artis kategorisi değilse veya kategori/ürün yoksa hesaplama
+      if (
+        !category ||
+        category.priceFormat !== "artis" ||
+        !productId ||
+        productId === "istemiyorum"
+      ) {
+        return null;
+      }
+
+      const productData = getProductData(categoryName, productId);
+      if (!productData) return null;
+
       const basePrice = Number(productData.price || 0);
-      const alanPrice = Number(productData.alanPrice || 0);
       const productWidth = Number(productData.width || 0);
       const productHeight = Number(productData.height || 0);
 
-      let calculatedPrice = 0;
+      // Kullanılacak boyutları belirle
+      // useCurrentDimensions true ise mevcut boyutları,
+      // false ise ürünün original boyutlarını kullan
+      const dimensionsToUse = useCurrentDimensions
+        ? { kontiWidth, kontiHeight }
+        : item.originalDimensions || { kontiWidth, kontiHeight };
 
-      // Calculate price based on category and format
-      if (priceFormat === "artis") {
-        if (categoryName.toLowerCase().includes("en")) {
-          // DÜZELTME: EN ürünü için boy yüksekliğini kullan
-          const heightToUse = kontiHeight; // Zorlanmış veya güncel yükseklik
-          calculatedPrice = productWidth * heightToUse * basePrice;
-          console.log(
-            `En hesaplama (using height=${heightToUse}): ${productWidth} * ${heightToUse} * ${basePrice} = ${calculatedPrice}`
-          );
-        } else if (categoryName.toLowerCase().includes("boy")) {
-          // DÜZELTME: BOY ürünü için en genişliğini kullan
-          const widthToUse = kontiWidth; // Zorlanmış veya güncel genişlik
-          calculatedPrice = productHeight * widthToUse * basePrice;
-          console.log(
-            `Boy hesaplama (using width=${widthToUse}): ${widthToUse} * ${productHeight} * ${basePrice} = ${calculatedPrice}`
-          );
-        } else {
-          // diğer artis durumları için standard hesaplama...
-        }
-      } else if (priceFormat === "metrekare") {
-        calculatedPrice = kontiWidth * kontiHeight * basePrice;
-      } else if (priceFormat === "cevre") {
-        const perimeter = 2 * (kontiWidth + kontiHeight);
-        calculatedPrice = perimeter * basePrice;
-      } else if (priceFormat === "onYuzey") {
-        calculatedPrice = kontiHeight * basePrice;
-      } else if (priceFormat === "tasDuvar") {
-        const area = kontiWidth * kontiHeight;
-        const perimeter = 2 * (kontiWidth + kontiHeight);
-        calculatedPrice = area * alanPrice + perimeter * basePrice;
+      let calculatedPrice = 0;
+      const isEnItem = categoryName.toLowerCase().includes("en");
+      const isBoyItem = categoryName.toLowerCase().includes("boy");
+
+      if (isEnItem) {
+        // En için: height * productWidth * basePrice
+        calculatedPrice =
+          dimensionsToUse.kontiHeight * productWidth * basePrice;
+        console.log(
+          `En ürünü "${item.product}" için fiyat hesaplanıyor (${
+            useCurrentDimensions ? "güncel" : "orijinal"
+          } boyut): ` +
+            `Height=${dimensionsToUse.kontiHeight}, Width=${productWidth}, Fiyat=${calculatedPrice}`
+        );
+      } else if (isBoyItem) {
+        // Boy için: width * productHeight * basePrice
+        calculatedPrice =
+          dimensionsToUse.kontiWidth * productHeight * basePrice;
+        console.log(
+          `Boy ürünü "${item.product}" için fiyat hesaplanıyor (${
+            useCurrentDimensions ? "güncel" : "orijinal"
+          } boyut): ` +
+            `Width=${dimensionsToUse.kontiWidth}, Height=${productHeight}, Fiyat=${calculatedPrice}`
+        );
       }
 
       return calculatedPrice;
     },
-    []
+    [getCategoryData, getProductData, kontiWidth, kontiHeight]
   );
 
-  // Store initial dimensions when first mounting
-  useEffect(() => {
-    if (
-      dimensions?.kontiWidth &&
-      dimensions?.kontiHeight &&
-      !originalDimensions.current
-    ) {
-      originalDimensions.current = {
-        kontiWidth: Number(dimensions.kontiWidth),
-        kontiHeight: Number(dimensions.kontiHeight),
-      };
-    }
-  }, [dimensions?.kontiWidth, dimensions?.kontiHeight]);
-
-  // Load saved items when component mounts
-  useEffect(() => {
-    if (!adding && !editingItem && savedItems?.length === 0) {
-      setAdding(false);
-    }
-
-    // Update previousSavedItems ref when savedItems change
-    previousSavedItems.current = JSON.parse(JSON.stringify(savedItems));
-  }, [savedItems, adding, editingItem]);
-
-  // Enhanced price calculation useEffect
-  useEffect(() => {
-    // If it's the first mount, mark and potentially exit
-    if (isInitialMount.current) {
-      isInitialMount.current = false;
-
-      // Check all dynamic price format categories
-      const dynamicPriceFormats = [
-        "artis",
-        "metrekare",
-        "cevre",
-        "onYuzey",
-        "tasDuvar",
-      ];
-
-      // Check if all items already have valid prices
-      const hasValidPrices = savedItems.every((item) => {
-        if (item.custom) return true; // Custom items already have prices
-
-        const category = Object.values(categories).find(
-          (cat) =>
-            cat.propertyName?.toLowerCase() === item.category?.toLowerCase()
-        );
-
-        if (!category || !dynamicPriceFormats.includes(category.priceFormat))
-          return true;
-
-        return typeof item.price === "number" && item.price > 0;
-      });
-
-      if (hasValidPrices) {
-        initialCalcDone.current = true;
-        return; // All prices valid, no need to recalculate
-      }
-    }
-
-    if (initialCalcDone.current && !shouldRecalc) {
-      return;
-    }
-
-    if (
-      !categories ||
-      !products ||
-      !savedItems?.length ||
-      Object.keys(categories).length === 0 ||
-      Object.keys(products).length === 0 ||
-      isUpdating.current
-    ) {
-      return;
-    }
-
-    // Mark as updating
+  // Dinamik fiyatları hesapla - tüm formatlar için
+  const recalculateAllDynamicPrices = useCallback(() => {
+    if (isUpdating.current || !savedItems.length) return;
     isUpdating.current = true;
 
     try {
-      // Create deep copy to avoid mutation issues
-      const updatedItems = JSON.parse(JSON.stringify(savedItems));
+      const updatedItems = [...savedItems];
+      let hasChanges = false;
 
-      // Process all items with dynamic pricing
+      // Desteklenen tüm dinamik fiyat formatları (artis HARİÇ)
+      const dynamicPriceFormats = ["tasDuvar", "onYuzey", "cevre", "metrekare"];
+
+      // Her öğeyi kontrol et
       for (let i = 0; i < updatedItems.length; i++) {
         const item = updatedItems[i];
-        if (item.custom || !item.productId) continue;
-        if (item.productId === "istemiyorum") continue;
-
-        const categoryName = item.category;
-        const productData = products[categoryName]?.[item.productId];
-        if (!productData) continue;
-
-        const category = Object.values(categories).find(
-          (cat) =>
-            cat.propertyName?.toLowerCase() === categoryName.toLowerCase()
-        );
-
-        const dynamicPriceFormats = [
-          "artis",
-          "metrekare",
-          "cevre",
-          "onYuzey",
-          "tasDuvar",
-        ];
-        if (!category || !dynamicPriceFormats.includes(category.priceFormat))
+        if (item.custom || !item.productId || item.productId === "istemiyorum")
           continue;
 
-        // For artis categories, use the item's original dimensions
-        if (category.priceFormat === "artis") {
-          updatedItems[i].price = calculateItemPrice(
-            category.priceFormat,
-            categoryName,
-            productData,
-            dimensions.kontiWidth,
-            dimensions.kontiHeight,
-            // Use this item's original dimensions
-            item.originalDimensions
-          );
-        } else {
-          // For other formats, use current dimensions
-          updatedItems[i].price = calculateItemPrice(
-            category.priceFormat,
-            categoryName,
-            productData,
-            dimensions.kontiWidth,
-            dimensions.kontiHeight,
-            null
-          );
+        const categoryName = item.category;
+        const category = getCategoryData(categoryName);
+        if (!category) continue;
+
+        const priceFormat = category.priceFormat;
+
+        // Artis kategorisi için farklı işlem yapacağız, burada atla
+        if (priceFormat === "artis") continue;
+
+        // Dinamik olmayan fiyat formatlarını atla
+        if (!dynamicPriceFormats.includes(priceFormat)) continue;
+
+        const productData = getProductData(categoryName, item.productId);
+        if (!productData) continue;
+
+        // Fiyat hesapla
+        let newPrice = 0;
+        const basePrice = Number(productData.price || 0);
+        const alanPrice = Number(productData.alanPrice || 0);
+
+        switch (priceFormat) {
+          case "tasDuvar": {
+            const area = kontiWidth * kontiHeight;
+            const perimeter = 2 * (kontiWidth + kontiHeight);
+            newPrice = area * alanPrice + perimeter * basePrice;
+            break;
+          }
+          case "onYuzey":
+            newPrice = kontiHeight * basePrice;
+            break;
+          case "cevre":
+            newPrice = (kontiWidth + kontiHeight) * 2 * basePrice;
+            break;
+          case "metrekare":
+            newPrice = kontiWidth * kontiHeight * basePrice;
+            break;
+          default:
+            newPrice = item.price;
+        }
+
+        // Fiyat değiştiyse güncelle
+        if (Math.abs(newPrice - item.price) > 0.1) {
+          updatedItems[i] = { ...item, price: newPrice };
+          hasChanges = true;
         }
       }
 
-      // Only update if prices actually changed
-      const hasChanges = updatedItems.some((item, index) => {
-        return Math.abs(savedItems[index]?.price - item.price) > 0.1;
-      });
-
+      // Değişiklik varsa state'i güncelle
       if (hasChanges) {
         setSavedItems(updatedItems);
       }
-
-      // Mark initial calculation as done
-      initialCalcDone.current = true;
     } catch (error) {
-      console.error("Error calculating product prices:", error);
+      console.error("Dinamik fiyat hesaplaması sırasında hata:", error);
     } finally {
-      // Clear the updating flag after a short delay
       setTimeout(() => {
         isUpdating.current = false;
       }, 100);
     }
   }, [
-    shouldRecalc,
-    categories,
-    products,
     savedItems,
-    dimensions,
+    getCategoryData,
+    getProductData,
+    kontiWidth,
+    kontiHeight,
     setSavedItems,
-    calculateItemPrice,
   ]);
-  // Function to calculate item price based on format
-  const forceRecalculateWithDimensions = useCallback(
-    (forcedDimensions) => {
-      if (isUpdating.current) return;
+
+  // Sadece artis ürünlerin fiyatlarını hesapla
+  const recalculateArtisItems = useCallback(
+    (syncWithOrderDetails = false) => {
+      if (isUpdating.current || !savedItems.length) return;
       isUpdating.current = true;
 
       try {
-        const updatedItems = JSON.parse(JSON.stringify(savedItems)).filter(
-          (item) => !deletedItems.current.includes(item.id)
+        console.log(
+          `Artis ürünlerin fiyatları hesaplanıyor (OrderDetails sync: ${syncWithOrderDetails})`
         );
 
-        let hasChanges = false;
+        setSavedItems((prevItems) => {
+          const updatedItems = [...prevItems];
+          let hasChanges = false;
 
-        for (let i = 0; i < updatedItems.length; i++) {
-          const item = updatedItems[i];
-          if (
-            item.custom ||
-            !item.productId ||
-            item.productId === "istemiyorum"
-          )
-            continue;
+          for (let i = 0; i < updatedItems.length; i++) {
+            const item = updatedItems[i];
+            if (
+              item.custom ||
+              !item.productId ||
+              item.productId === "istemiyorum"
+            )
+              continue;
 
-          const categoryName = item.category;
-          const category = Object.values(categories).find(
-            (cat) =>
-              cat.propertyName?.toLowerCase() === categoryName?.toLowerCase()
-          );
+            const categoryName = item.category;
+            const category = getCategoryData(categoryName);
 
-          // Include all dynamic price formats
-          const dynamicPriceFormats = [
-            "artis",
-            "metrekare",
-            "cevre",
-            "onYuzey",
-            "tasDuvar",
-          ];
-          if (!category || !dynamicPriceFormats.includes(category.priceFormat))
-            continue;
+            // Sadece artis kategorisindeki ürünleri hesapla
+            if (!category || category.priceFormat !== "artis") continue;
 
-          const productData = products[categoryName]?.[item.productId];
-          if (!productData) continue;
+            // OrderDetails ile senkronizasyon istendiyse güncel boyutları kullan,
+            // aksi halde ürünün orijinal boyutlarını kullan
+            const newPrice = calculateArtisPrice(item, syncWithOrderDetails);
 
-          // ÖNEMLİ DEĞİŞİKLİK: Zorla geçirilen boyutları kullan, orjinal boyutları değil
-          // En/Boy örüntülerinin birbiriyle etkileşimini doğru işlemek için
-          let newPrice;
-
-          if (category.priceFormat === "artis") {
-            if (categoryName.toLowerCase().includes("en")) {
-              // En için boy yüksekliğini kullan
-              const productWidth = Number(productData.width || 0);
-              newPrice =
-                productWidth *
-                forcedDimensions.kontiHeight *
-                Number(productData.price || 0);
-            } else if (categoryName.toLowerCase().includes("boy")) {
-              // Boy için en genişliğini kullan
-              const productHeight = Number(productData.height || 0);
-              newPrice =
-                productHeight *
-                forcedDimensions.kontiWidth *
-                Number(productData.price || 0);
-            } else {
-              // Diğer artis formatları için normal hesaplama
-              newPrice = calculateItemPrice(
-                category.priceFormat,
-                categoryName,
-                productData,
-                forcedDimensions.kontiWidth,
-                forcedDimensions.kontiHeight,
-                null // Orjinal boyutları kullanma - zorlanan boyutları kullan
-              );
+            if (newPrice !== null && Math.abs(newPrice - item.price) > 0.1) {
+              updatedItems[i] = {
+                ...item,
+                price: newPrice,
+                // OrderDetails ile senkronizasyon istendiyse originalDimensions'ı güncelle
+                ...(syncWithOrderDetails
+                  ? {
+                      originalDimensions: {
+                        kontiWidth,
+                        kontiHeight,
+                      },
+                    }
+                  : {}),
+              };
+              hasChanges = true;
             }
-          } else {
-            // Diğer dinamik fiyat formatları için - zorlanan boyutları kullan
-            newPrice = calculateItemPrice(
-              category.priceFormat,
-              categoryName,
-              productData,
-              forcedDimensions.kontiWidth,
-              forcedDimensions.kontiHeight,
-              null // Orjinal boyutları kullanma
-            );
           }
 
-          if (Math.abs(newPrice - item.price) > 0.1) {
-            updatedItems[i].price = newPrice;
-            hasChanges = true;
-          }
-        }
-
-        if (hasChanges) {
-          setSavedItems(updatedItems);
-        }
+          return hasChanges ? updatedItems : prevItems;
+        });
       } catch (error) {
-        console.error("Error in forced recalculation:", error);
+        console.error("Artis fiyat hesaplaması sırasında hata:", error);
       } finally {
         setTimeout(() => {
           isUpdating.current = false;
         }, 100);
       }
     },
-    [savedItems, categories, products, calculateItemPrice, setSavedItems]
+    [
+      savedItems,
+      getCategoryData,
+      calculateArtisPrice,
+      kontiWidth,
+      kontiHeight,
+      setSavedItems,
+    ]
   );
 
-  const recalculateAllDynamicItems = useCallback(() => {
-    if (isUpdating.current) return;
-    isUpdating.current = true;
+  // Konti boyutlarını güncelleme (artis ürünleri için)
+  const updateKontiDimensions = useCallback(
+    (item, action = "add") => {
+      if (
+        !item ||
+        !item.productId ||
+        item.custom ||
+        item.productId === "istemiyorum"
+      )
+        return;
 
-    try {
-      const updatedItems = JSON.parse(JSON.stringify(savedItems)).filter(
-        (item) => !deletedItems.current.includes(item.id)
-      );
+      const categoryName = item.category;
+      const category = getCategoryData(categoryName);
 
-      let hasChanges = false;
+      // Sadece artis kategorisi için boyutları güncelle
+      if (category?.priceFormat !== "artis") return;
 
-      // Process all items with any dynamic pricing format
-      for (let i = 0; i < updatedItems.length; i++) {
-        const item = updatedItems[i];
-        if (item.custom || !item.productId || item.productId === "istemiyorum")
-          continue;
+      const productData = getProductData(categoryName, item.productId);
+      if (!productData) return;
 
-        const categoryName = item.category;
-        const category = Object.values(categories).find(
-          (cat) =>
-            cat.propertyName?.toLowerCase() === categoryName?.toLowerCase()
+      const productWidth = Number(productData.width || 0);
+      const productHeight = Number(productData.height || 0);
+      const currentWidth = Number(dimensions.kontiWidth || 0);
+      const currentHeight = Number(dimensions.kontiHeight || 0);
+
+      let newWidth = currentWidth;
+      let newHeight = currentHeight;
+      let dimensionChanged = false;
+
+      // En kategorisi ise genişliği ayarla
+      if (categoryName.toLowerCase().includes("en")) {
+        newWidth =
+          action === "add"
+            ? currentWidth + productWidth
+            : Math.max(0, currentWidth - productWidth);
+
+        if (newWidth > 0 && Math.abs(newWidth - currentWidth) > 0.01) {
+          dimensionChanged = true;
+        }
+      }
+      // Boy kategorisi ise yüksekliği ayarla
+      else if (categoryName.toLowerCase().includes("boy")) {
+        newHeight =
+          action === "add"
+            ? currentHeight + productHeight
+            : Math.max(0, currentHeight - productHeight);
+
+        if (newHeight > 0 && Math.abs(newHeight - currentHeight) > 0.01) {
+          dimensionChanged = true;
+        }
+      }
+
+      // Boyutlar değiştiyse store'u güncelle
+      if (dimensionChanged) {
+        console.log(
+          `Konti boyutları güncelleniyor (${action}): ${currentWidth}x${currentHeight} -> ${newWidth}x${newHeight}`
         );
 
-        // Check all dynamic price formats
-        const dynamicPriceFormats = [
-          "artis",
-          "metrekare",
-          "cevre",
-          "onYuzey",
-          "tasDuvar",
-        ];
+        initializeDimensions({
+          kontiWidth: newWidth,
+          kontiHeight: newHeight,
+          anaWidth: newWidth,
+          anaHeight: newHeight,
+        });
 
-        if (!category || !dynamicPriceFormats.includes(category.priceFormat))
-          continue;
-
-        const productData = products[categoryName]?.[item.productId];
-        if (!productData) continue;
-
-        // CRITICAL CHANGE: For artis categories, use each item's ORIGINAL dimensions
-        // This prevents recalculation of existing items when new dimensions are added
-        if (category.priceFormat === "artis") {
-          // Get dimensions that existed when this item was added
-          const originalDimensions =
-            item.originalDimensions || originalDimensions.current;
-          if (!originalDimensions) {
-            console.warn(
-              `No original dimensions found for item ${item.id}. Using current dimensions.`
-            );
-          }
-
-          // Calculate price using original dimensions for this specific item
-          const newPrice = calculateItemPrice(
-            "artis",
-            categoryName,
-            productData,
-            dimensions.kontiWidth, // We still pass current width
-            dimensions.kontiHeight, // We still pass current height
-            originalDimensions // But the calculation will use these for en/boy
-          );
-
-          if (Math.abs(newPrice - item.price) > 0.1) {
-            updatedItems[i].price = newPrice;
-            hasChanges = true;
-          }
-        }
-        // For non-artis dynamic formats, always use current dimensions
-        else {
-          const newPrice = calculateItemPrice(
-            category.priceFormat,
-            categoryName,
-            productData,
-            dimensions.kontiWidth,
-            dimensions.kontiHeight,
-            null // No need for original dimensions here
-          );
-
-          if (Math.abs(newPrice - item.price) > 0.1) {
-            updatedItems[i].price = newPrice;
-            hasChanges = true;
-          }
+        // İşlem ekleme ise fiyat hesaplama tetiklemeye gerek yok,
+        // çünkü ürün zaten doğru fiyatla eklenecek
+        if (action === "remove") {
+          setShouldRecalcPrices(true);
+          setTimeout(() => setShouldRecalcPrices(false), 100);
         }
       }
+    },
+    [
+      getCategoryData,
+      getProductData,
+      dimensions,
+      initializeDimensions,
+      setShouldRecalcPrices,
+    ]
+  );
 
-      if (hasChanges) {
-        setSavedItems(updatedItems);
-      }
-    } catch (error) {
-      console.error("Error recalculating dynamic item prices:", error);
-    } finally {
-      setTimeout(() => {
-        isUpdating.current = false;
-      }, 100);
-    }
-  }, [
-    categories,
-    dimensions,
-    products,
-    savedItems,
-    setSavedItems,
-    calculateItemPrice,
-    originalDimensions,
-  ]);
-  // Handle dimension changes and recalculate prices
-  useEffect(() => {
-    // Skip if dimensions aren't defined
-    if (!dimensions.kontiWidth || !dimensions.kontiHeight) {
-      return;
+  // Yeni öğe ekle
+  const handleAddItem = useCallback(() => {
+    // Doğrulama kontrolü
+    if (
+      (newItem.custom && !newItem.name) ||
+      !newItem.category ||
+      (!newItem.price && newItem.price !== 0)
+    ) {
+      return; // Validasyon başarısız
     }
 
-    // Check if dimensions have actually changed
-    const dimensionsChanged =
-      lastDimensions.current?.kontiWidth !== dimensions.kontiWidth ||
-      lastDimensions.current?.kontiHeight !== dimensions.kontiHeight;
-
-    // Log dimension changes for debugging
-    if (dimensionsChanged) {
-      console.log("Konti dimensions changed:", {
-        from: lastDimensions.current,
-        to: {
-          kontiWidth: dimensions.kontiWidth,
-          kontiHeight: dimensions.kontiHeight,
-        },
-      });
-    }
-
-    // Update last dimensions ref
-    lastDimensions.current = {
+    // Ekleme öncesi mevcut boyutları kaydet
+    const currentDimensions = {
       kontiWidth: dimensions.kontiWidth,
       kontiHeight: dimensions.kontiHeight,
     };
 
-    // Only recalculate if dimensions changed and we have saved items
-    if (dimensionsChanged && savedItems.length > 0) {
-      // Force a recalculation with a slight delay to ensure all state updates are processed
-      setTimeout(() => {
-        if (!isUpdating.current) {
-          // Call the comprehensive function
-          recalculateAllDynamicItems();
-        }
-      }, 150);
+    const itemToAdd = {
+      id: Date.now().toString(),
+      category: newItem.category,
+      product: newItem.custom ? newItem.name : newItem.product,
+      productId: newItem.custom ? null : newItem.productId,
+      price: Number(newItem.price),
+      custom: newItem.custom,
+      originalDimensions: currentDimensions, // Ekleme anındaki boyutları sakla
+      addedAt: Date.now(), // Sıralama için ekleme zamanı
+    };
+
+    console.log("Eklenen ürün:", itemToAdd);
+
+    // Artis kategorilerinde boyutları güncelle
+    if (
+      !newItem.custom &&
+      newItem.productId &&
+      newItem.productId !== "istemiyorum"
+    ) {
+      const category = getCategoryData(newItem.category);
+      if (category?.priceFormat === "artis") {
+        updateKontiDimensions(itemToAdd, "add");
+      }
     }
+
+    // Ürünü listeye ekle
+    setSavedItems((prev) => [...prev, itemToAdd]);
+
+    // Formu sıfırla
+    setNewItem({
+      category: "",
+      product: "",
+      productId: "",
+      price: "",
+      custom: false,
+      name: "",
+    });
+    setAdding(false);
   }, [
-    dimensions.kontiWidth,
-    dimensions.kontiHeight,
-    savedItems.length,
-    recalculateAllDynamicItems,
+    newItem,
+    dimensions,
+    updateKontiDimensions,
+    setSavedItems,
+    getCategoryData,
   ]);
 
-  // Function to handle recalculation of prices after dimension changes
-  const recalculateAllArtisItems = useCallback(() => {
-    if (isUpdating.current) return;
-    isUpdating.current = true;
+  // Ürün sil
+  // handleDeleteItem fonksiyonunu tamamen güncelleyelim
 
-    try {
-      // DOĞRUDAN STORE'DAN EN GÜNCEL BOYUTLARI AL
-      const storeValues = useDimensionsStore.getState();
-      const storeWidth = storeValues.kontiWidth;
-      const storeHeight = storeValues.kontiHeight;
+  const handleDeleteItem = useCallback(
+    (index) => {
+      const itemToDelete = savedItems[index];
+      if (!itemToDelete) return;
 
-      console.log("📐 recalculateAllArtisItems - Store Boyutları:", {
-        width: storeWidth,
-        height: storeHeight,
-      });
+      const itemId = itemToDelete.id;
 
-      const updatedItems = JSON.parse(JSON.stringify(savedItems)).filter(
-        (item) => !deletedItems.current.includes(item.id)
-      );
+      // Artis kategorisindeki ürünler için özel işlem
+      if (
+        !itemToDelete.custom &&
+        itemToDelete.productId &&
+        itemToDelete.productId !== "istemiyorum"
+      ) {
+        const categoryName = itemToDelete.category;
+        const category = getCategoryData(categoryName);
 
-      let hasChanges = false;
+        // Sadece artis kategorisi için özel işlem yapıyoruz
+        if (category?.priceFormat === "artis") {
+          console.log("Artis kategorili ürün siliniyor:", itemToDelete);
 
-      // Recalculate all artis items with their own original dimensions
-      for (let i = 0; i < updatedItems.length; i++) {
-        const item = updatedItems[i];
-        if (item.custom || !item.productId || item.productId === "istemiyorum")
-          continue;
+          // Boyut değişikliği öncesi mevcut boyutları kaydet
+          const originalWidth = dimensions.kontiWidth;
+          const originalHeight = dimensions.kontiHeight;
 
-        const categoryName = item.category;
-        if (
-          !categoryName.toLowerCase().includes("en") &&
-          !categoryName.toLowerCase().includes("boy")
-        ) {
-          continue;
-        }
+          // Önce boyutları güncelle
+          updateKontiDimensions(itemToDelete, "remove");
 
-        const category = Object.values(categories).find(
-          (cat) =>
-            cat.propertyName?.toLowerCase() === categoryName.toLowerCase()
-        );
+          // Öğeyi listeden çıkar
+          setSavedItems((prev) => {
+            const updatedItems = prev.filter((_, i) => i !== index);
+            return updatedItems;
+          });
 
-        if (!category || category.priceFormat !== "artis") continue;
+          // Silinen öğenin ID'sini kaydet
+          if (!deletedItems.current.includes(itemId)) {
+            deletedItems.current.push(itemId);
+          }
 
-        const productData = products[categoryName]?.[item.productId];
-        if (!productData) continue;
+          // Silinen ürünün türüne göre hangi boyut değişti?
+          const isWidthChanged = itemToDelete.category
+            .toLowerCase()
+            .includes("en");
+          const isHeightChanged = itemToDelete.category
+            .toLowerCase()
+            .includes("boy");
 
-        const isEnItem = categoryName.toLowerCase().includes("en");
-        const isBoyItem = categoryName.toLowerCase().includes("boy");
+          // Gecikmeyle kalan artis ürünlerinin fiyatlarını yeniden hesapla
+          setTimeout(() => {
+            console.log("Artis ürün silme sonrası fiyat güncelleme başlıyor");
 
-        // HER ZAMAN STORE'DAN ALDIĞIMIZ GÜNCEL BOYUTLARI KULLAN
-        const newPrice = calculateItemPrice(
-          "artis",
-          categoryName,
-          productData,
-          storeWidth,
-          storeHeight,
-          null // originalDimensions kullanmıyoruz artık
-        );
+            // Son boyutları al
+            const newWidth = dimensions.kontiWidth;
+            const newHeight = dimensions.kontiHeight;
+            console.log(
+              `Boyut değişimi: ${originalWidth}x${originalHeight} -> ${newWidth}x${newHeight}`
+            );
 
-        if (Math.abs(newPrice - item.price) > 0.1) {
-          console.log(
-            `${categoryName} ürünü fiyatı güncellendi: ${item.price} -> ${newPrice}`
-          );
-          updatedItems[i].price = newPrice;
-          hasChanges = true;
+            // Kalan artis ürünlerinin fiyatlarını güncelle
+            setSavedItems((prevItems) => {
+              const items = [...prevItems];
+              let hasChanges = false;
+
+              // Her bir ürünü kontrol et
+              for (let i = 0; i < items.length; i++) {
+                const item = items[i];
+
+                // Sadece artis kategorisindeki ürünleri güncelle
+                if (
+                  !item.custom &&
+                  item.productId &&
+                  item.productId !== "istemiyorum"
+                ) {
+                  const itemCategoryName = item.category;
+                  const itemCategory = getCategoryData(itemCategoryName);
+
+                  if (itemCategory?.priceFormat === "artis") {
+                    const isItemEn = itemCategoryName
+                      .toLowerCase()
+                      .includes("en");
+                    const isItemBoy = itemCategoryName
+                      .toLowerCase()
+                      .includes("boy");
+
+                    const productData = getProductData(
+                      itemCategoryName,
+                      item.productId
+                    );
+                    if (productData) {
+                      const basePrice = Number(productData.price || 0);
+                      const productWidth = Number(productData.width || 0);
+                      const productHeight = Number(productData.height || 0);
+
+                      let newPrice = item.price;
+
+                      // En ürünlerinin fiyatını yükseklik değiştiyse güncelle
+                      if (isItemEn && isHeightChanged) {
+                        // En ürünleri boy değişiminden etkilenir
+                        newPrice = newHeight * productWidth * basePrice;
+                        console.log(
+                          `En ürünü "${item.product}" boy değişiminden sonra güncelleniyor: ` +
+                            `Yeni yükseklik=${newHeight}, Width=${productWidth}, Fiyat=${newPrice}`
+                        );
+                      }
+                      // Boy ürünlerinin fiyatını genişlik değiştiyse güncelle
+                      else if (isItemBoy && isWidthChanged) {
+                        // Boy ürünleri en değişiminden etkilenir
+                        newPrice = newWidth * productHeight * basePrice;
+                        console.log(
+                          `Boy ürünü "${item.product}" en değişiminden sonra güncelleniyor: ` +
+                            `Yeni genişlik=${newWidth}, Height=${productHeight}, Fiyat=${newPrice}`
+                        );
+                      }
+
+                      // Fiyat değiştiyse güncelle
+                      if (Math.abs(newPrice - item.price) > 0.1) {
+                        items[i] = {
+                          ...item,
+                          price: newPrice,
+                          // Ürünün originalDimensions'ını güncelleme - bu kritik nokta
+                        };
+                        hasChanges = true;
+                      }
+                    }
+                  }
+                }
+              }
+
+              return hasChanges ? items : prevItems;
+            });
+          }, 300); // Boyut değişiminin tamamlanması için yeterli gecikme
+
+          return;
         }
       }
 
-      if (hasChanges) {
-        setSavedItems(updatedItems);
+      // Artis kategorisinde olmayan ürünler için normal silme işlemi
+      setSavedItems((prev) => prev.filter((_, i) => i !== index));
+
+      // Silinen öğenin ID'sini kaydet
+      if (!deletedItems.current.includes(itemId)) {
+        deletedItems.current.push(itemId);
       }
-    } catch (error) {
-      console.error("Error recalculating prices:", error);
-    } finally {
-      setTimeout(() => {
-        isUpdating.current = false;
-      }, 100);
+    },
+    [
+      savedItems,
+      dimensions,
+      getCategoryData,
+      getProductData,
+      updateKontiDimensions,
+      setSavedItems,
+    ]
+  );
+  // Ürün düzenle
+  const handleEditItem = useCallback((item, index) => {
+    setEditingItem(index);
+    setNewItem({
+      category: item.category,
+      product: item.product,
+      productId: item.productId,
+      price: item.price.toString(),
+      custom: item.custom,
+      name: item.custom ? item.product : "",
+    });
+  }, []);
+
+  // Düzenlenmiş öğeyi kaydet
+  const handleSaveEdit = useCallback(() => {
+    if (editingItem === null) return;
+
+    // Doğrulama kontrolü
+    if (
+      (newItem.custom && !newItem.name) ||
+      !newItem.category ||
+      (!newItem.price && newItem.price !== 0)
+    ) {
+      return; // Validasyon başarısız
     }
-  }, [categories, products, savedItems, setSavedItems, calculateItemPrice]);
 
-  // Add this function to recalculate all dimension-dependent items
+    // Orijinal öğeyi al
+    const originalItem = savedItems[editingItem];
 
-  // Category options for dropdown
+    // Kategori veya ürün değişti mi kontrol et
+    const categoryChanged = originalItem.category !== newItem.category;
+    const productChanged = originalItem.productId !== newItem.productId;
+
+    // Güncellenmiş öğeyi oluştur - originalDimensions'ı koru
+    const updatedItem = {
+      ...originalItem,
+      category: newItem.category,
+      product: newItem.custom ? newItem.name : newItem.product,
+      productId: newItem.custom ? null : newItem.productId,
+      price: Number(newItem.price),
+      custom: newItem.custom,
+    };
+
+    // Artis kategorilerinde boyut değişimlerini uygula
+    if (categoryChanged || productChanged) {
+      // Eski ürünün etkisini kaldır (Artis ise)
+      if (originalItem.productId && !originalItem.custom) {
+        const originalCategory = getCategoryData(originalItem.category);
+        if (originalCategory?.priceFormat === "artis") {
+          updateKontiDimensions(originalItem, "remove");
+        }
+      }
+
+      // Yeni ürünün etkisini ekle (Artis ise)
+      if (updatedItem.productId && !updatedItem.custom) {
+        const newCategory = getCategoryData(updatedItem.category);
+        if (newCategory?.priceFormat === "artis") {
+          // Güncel boyutlarda bir ürün ekleniyor gibi düşün
+          updatedItem.originalDimensions = {
+            kontiWidth: dimensions.kontiWidth,
+            kontiHeight: dimensions.kontiHeight,
+          };
+          updateKontiDimensions(updatedItem, "add");
+        }
+      }
+    }
+
+    // Listeyi güncelle
+    setSavedItems((prev) => {
+      const updated = [...prev];
+      updated[editingItem] = updatedItem;
+      return updated;
+    });
+
+    // Formu sıfırla
+    setNewItem({
+      category: "",
+      product: "",
+      productId: "",
+      price: "",
+      custom: false,
+      name: "",
+    });
+    setEditingItem(null);
+  }, [
+    editingItem,
+    newItem,
+    savedItems,
+    dimensions,
+    getCategoryData,
+    updateKontiDimensions,
+    setSavedItems,
+  ]);
+
+  // Ekleme iptal
+  const handleCancelAdd = useCallback(() => {
+    setNewItem({
+      category: "",
+      product: "",
+      productId: "",
+      price: "",
+      custom: false,
+      name: "",
+    });
+    setAdding(false);
+  }, []);
+
+  // Kategori değişimi
+  const handleCategoryChange = useCallback((e) => {
+    const categoryName = e.target.value;
+    setNewItem((prev) => ({
+      ...prev,
+      category: categoryName,
+      product: "",
+      productId: "",
+      price: "",
+      name: "",
+    }));
+  }, []);
+
+  // Ürün değişimi
+  const handleProductChange = useCallback(
+    (e) => {
+      const value = e.target.value;
+
+      if (value === "custom") {
+        setNewItem((prev) => ({
+          ...prev,
+          product: "",
+          productId: "",
+          price: "",
+          custom: true,
+          name: "",
+        }));
+        return;
+      }
+
+      if (!value) {
+        setNewItem((prev) => ({
+          ...prev,
+          product: "",
+          productId: "",
+          price: "",
+          custom: false,
+          name: "",
+        }));
+        return;
+      }
+
+      try {
+        const selectedProduct = JSON.parse(value);
+        const categoryName = newItem.category;
+
+        // İstemiyorum seçildiyse
+        if (selectedProduct.id === "istemiyorum") {
+          setNewItem((prev) => ({
+            ...prev,
+            product: "İstemiyorum",
+            productId: "istemiyorum",
+            price: 0,
+            custom: false,
+            name: "İstemiyorum",
+          }));
+          return;
+        }
+
+        // Kategori bilgilerini al
+        const category = getCategoryData(categoryName);
+        const productData = getProductData(categoryName, selectedProduct.id);
+
+        if (category && productData) {
+          let calculatedPrice = selectedProduct.price;
+
+          // Dinamik fiyat hesaplama
+          if (category.priceFormat === "metrekare") {
+            calculatedPrice =
+              kontiWidth * kontiHeight * Number(productData.price || 0);
+          } else if (category.priceFormat === "cevre") {
+            const perimeter = 2 * (kontiWidth + kontiHeight);
+            calculatedPrice = perimeter * Number(productData.price || 0);
+          } else if (category.priceFormat === "onYuzey") {
+            calculatedPrice = kontiHeight * Number(productData.price || 0);
+          } else if (category.priceFormat === "tasDuvar") {
+            const area = kontiWidth * kontiHeight;
+            const perimeter = 2 * (kontiWidth + kontiHeight);
+            calculatedPrice =
+              area * Number(productData.alanPrice || 0) +
+              perimeter * Number(productData.price || 0);
+          } else if (category.priceFormat === "artis") {
+            // Artis için özel hesaplama
+            if (categoryName.toLowerCase().includes("en")) {
+              const productWidth = Number(productData.width || 0);
+              calculatedPrice =
+                kontiHeight * productWidth * Number(productData.price || 0);
+            } else if (categoryName.toLowerCase().includes("boy")) {
+              const productHeight = Number(productData.height || 0);
+              calculatedPrice =
+                kontiWidth * productHeight * Number(productData.price || 0);
+            }
+          }
+
+          setNewItem((prev) => ({
+            ...prev,
+            product: selectedProduct.name,
+            productId: selectedProduct.id,
+            price: calculatedPrice,
+            custom: false,
+            name: selectedProduct.name,
+          }));
+        } else {
+          // Kategori veya ürün bulunamazsa
+          setNewItem((prev) => ({
+            ...prev,
+            product: selectedProduct.name,
+            productId: selectedProduct.id,
+            price: Number(selectedProduct.price),
+            custom: false,
+            name: selectedProduct.name,
+          }));
+        }
+      } catch (error) {
+        console.error("Ürün seçimi hatası:", error);
+      }
+    },
+    [newItem.category, getCategoryData, getProductData, kontiWidth, kontiHeight]
+  );
+
+  // Fiyat değişimi
+  const handlePriceChange = useCallback((e) => {
+    setNewItem((prev) => ({
+      ...prev,
+      price: e.target.value,
+    }));
+  }, []);
+
+  // Özel isim değişimi
+  const handleNameChange = useCallback((e) => {
+    setNewItem((prev) => ({
+      ...prev,
+      name: e.target.value,
+    }));
+  }, []);
+
+  // Kategoriler için dropdown seçenekleri
   const categoryOptions = useMemo(() => {
     return Object.values(categories)
       .sort((a, b) => (a.order || 999) - (b.order || 999))
@@ -615,7 +848,7 @@ const BonusItems = ({
       }));
   }, [categories]);
 
-  // Product options based on selected category
+  // Seçili kategoriye göre ürün seçenekleri
   const productOptions = useMemo(() => {
     const categoryName = newItem.category;
     if (!categoryName || !products[categoryName]) return [];
@@ -640,985 +873,422 @@ const BonusItems = ({
     return options;
   }, [newItem.category, products]);
 
-  // Handle category change
-  const handleCategoryChange = useCallback((e) => {
-    const categoryName = e.target.value;
-    setNewItem((prev) => ({
-      ...prev,
-      category: categoryName,
-      product: "",
-      productId: "",
-      price: "",
-      name: "",
-    }));
-  }, []);
+  // EFFECT HOOKS - İŞLEVSEL OLARAK GÜNCELLENDİ
 
-  // Handle product change
-  const handleProductChange = useCallback(
-    (e) => {
-      try {
-        const value = e.target.value;
+  // 1. İlk yüklemede boyutları ayarla
+  useEffect(() => {
+    if (!initializedRef.current && savedItems.length > 0) {
+      // İlk yüklemede mevcut boyutları kaydet
+      lastDimensions.current = { kontiWidth, kontiHeight };
+      initializedRef.current = true;
+    }
+  }, [kontiWidth, kontiHeight, savedItems]);
 
-        // "custom" değeri için hata kontrolü ekleyelim
-        if (!value || value === "custom") {
-          setNewItem((prev) => ({
-            ...prev,
-            product: "",
-            productId: "",
-            price: "",
-            custom: value === "custom",
-            name: "",
-          }));
-          return;
-        }
-
-        // JSON parse hatası kontrolü
-        let selectedProduct;
-        try {
-          selectedProduct = JSON.parse(value);
-        } catch (error) {
-          console.error("Product JSON parse error:", value, error);
-          return;
-        }
-
-        // İstemiyorum seçildiyse
-        if (selectedProduct.id === "istemiyorum") {
-          setNewItem((prev) => ({
-            ...prev,
-            product: "İstemiyorum",
-            productId: "istemiyorum",
-            price: 0,
-            custom: false,
-            name: "İstemiyorum",
-          }));
-          return;
-        }
-
-        const categoryName = newItem.category;
-        const productData = products[categoryName]?.[selectedProduct.id];
-
-        // productData bulunamadı hatası
-        if (!productData) {
-          console.error(
-            "Product data not found for:",
-            selectedProduct.id,
-            "in category:",
-            categoryName
-          );
-          // Yine de devam et ama loglayalım
-        }
-
-        const category = Object.values(categories).find(
-          (cat) =>
-            cat.propertyName?.toLowerCase() === categoryName.toLowerCase()
-        );
-
-        // Calculate price based on dimensions and product
-        if (productData && category?.priceFormat) {
-          // Fiyat hesaplamada hata kontrolü ekleyelim
-          try {
-            const price = calculateItemPrice(
-              category.priceFormat,
-              categoryName,
-              productData,
-              dimensions.kontiWidth,
-              dimensions.kontiHeight,
-              originalDimensions.current || dimensions
-            );
-
-            setNewItem((prev) => ({
-              ...prev,
-              product: selectedProduct.name,
-              productId: selectedProduct.id,
-              price: price || Number(selectedProduct.price), // Hesaplama başarısız olursa direkt fiyatı kullan
-              custom: false,
-              name: selectedProduct.name,
-            }));
-          } catch (calcError) {
-            console.error("Price calculation error:", calcError);
-            // Hesaplama başarısız olursa direkt fiyatı kullan
-            setNewItem((prev) => ({
-              ...prev,
-              product: selectedProduct.name,
-              productId: selectedProduct.id,
-              price: Number(selectedProduct.price),
-              custom: false,
-              name: selectedProduct.name,
-            }));
-          }
-        } else {
-          // Use static price for non-dynamic categories
-          setNewItem((prev) => ({
-            ...prev,
-            product: selectedProduct.name,
-            productId: selectedProduct.id,
-            price: Number(selectedProduct.price),
-            custom: false,
-            name: selectedProduct.name,
-          }));
-        }
-      } catch (error) {
-        console.error("Error handling product selection:", error);
-      }
-    },
-    [newItem.category, products, categories, dimensions, calculateItemPrice]
-  );
-
-  // Handle price change
-  const handlePriceChange = useCallback((e) => {
-    setNewItem((prev) => ({
-      ...prev,
-      price: e.target.value,
-    }));
-  }, []);
-
-  // Handle custom name change
-  const handleNameChange = useCallback((e) => {
-    setNewItem((prev) => ({
-      ...prev,
-      name: e.target.value,
-    }));
-  }, []);
-
-  // updateKontiDimensions fonksiyonunu güncelleyin
-  const updateKontiDimensions = useCallback(
-    (item, action = "add") => {
-      if (
-        !item ||
-        !item.productId ||
-        item.custom ||
-        item.productId === "istemiyorum"
-      )
-        return;
-
-      const categoryName = item.category;
-      const category = Object.values(categories).find(
-        (cat) => cat.propertyName?.toLowerCase() === categoryName?.toLowerCase()
+  // 2. OrderDetails'dan gelen boyut değişikliklerini izle (shouldRecalc prop'u)
+  useEffect(() => {
+    if (shouldRecalc && savedItems.length > 0 && !isUpdating.current) {
+      console.log(
+        "OrderDetails'dan boyut değişikliği sinyali alındı. Fiyatlar güncelleniyor..."
       );
 
-      // Only update dimensions for artis category
-      if (category?.priceFormat !== "artis") return;
+      // İlk önce artis olmayan dinamik ürünler hesaplanır
+      recalculateAllDynamicPrices();
 
-      const productData = products[categoryName]?.[item.productId];
-      if (!productData) return;
-
-      const productWidth = Number(productData.width || 0);
-      const productHeight = Number(productData.height || 0);
-      const currentWidth = Number(dimensions.kontiWidth || 0);
-      const currentHeight = Number(dimensions.kontiHeight || 0);
-
-      let dimensionChanged = false;
-
-      // If it's an "En" category, adjust width
-      if (categoryName.toLowerCase().includes("en")) {
-        const newWidth =
-          action === "add"
-            ? currentWidth + productWidth
-            : currentWidth - productWidth;
-
-        if (newWidth > 0 && newWidth !== currentWidth) {
-          // Use Zustand to update width
-          updateDimension("kontiWidth", newWidth);
-          updateDimension("anaWidth", newWidth); // Ana width'i de güncelle
-          dimensionChanged = true;
-        }
-      }
-      // For "Boy" category products:
-      else if (categoryName.toLowerCase().includes("boy")) {
-        const newHeight =
-          action === "add"
-            ? currentHeight + productHeight
-            : currentHeight - productHeight;
-
-        if (newHeight > 0 && newHeight !== currentHeight) {
-          // Use Zustand to update height
-          updateDimension("kontiHeight", newHeight);
-          updateDimension("anaHeight", newHeight); // Ana height'i de güncelle
-          dimensionChanged = true;
-        }
-      }
-
-      // Boyutlar değiştiyse ve recalcPrices tetiklenmeli
-      if (dimensionChanged) {
-        // setShouldRecalcPrices prop'una gerekirse true değer gönder
-        // Bu hem OrderDetails hem de BonusItems'daki fiyatları günceller
-        setShouldRecalcPrices(true);
-        setTimeout(() => setShouldRecalcPrices(false), 100);
-      }
-    },
-    [categories, products, dimensions, updateDimension, setShouldRecalcPrices]
-  );
-  // Eski updateKontiDimensions fonksiyonunu güncelleyin
-
-  // Add new item to list
-  // Add new item to list
-  const handleAddItem = useCallback(() => {
-    // Doğrulama kontrolü
-    const validationErrors = [];
-
-    if (!newItem.category) {
-      validationErrors.push("Kategori seçilmedi");
+      // Sonra OrderDetails ile senkronize olarak artis ürünleri hesaplanır
+      setTimeout(() => {
+        recalculateArtisItems(true); // OrderDetails ile senkronize
+      }, 100);
     }
+  }, [
+    shouldRecalc,
+    savedItems,
+    recalculateAllDynamicPrices,
+    recalculateArtisItems,
+  ]);
 
-    if (newItem.custom && !newItem.name) {
-      validationErrors.push("Özel ürün adı girilmedi");
-    }
-
-    if (!newItem.custom && !newItem.productId) {
-      validationErrors.push("Ürün seçilmedi");
-    }
-
-    if (!newItem.price && newItem.price !== 0) {
-      validationErrors.push("Fiyat girilmedi");
-    }
-
-    if (validationErrors.length > 0) {
-      console.error("Ürün eklerken validasyon hataları:", validationErrors);
-      // Burada kullanıcıya bir toast mesajı göstermek faydalı olabilir
-      return;
-    }
-
-    // Get the current dimensions BEFORE any changes
-    const currentDimensions = {
-      kontiWidth: dimensions.kontiWidth,
-      kontiHeight: dimensions.kontiHeight,
-    };
-
-    const itemToAdd = {
-      id: Date.now().toString(),
-      category: newItem.category,
-      product: newItem.custom ? newItem.name : newItem.product,
-      productId: newItem.custom ? null : newItem.productId,
-      price: Number(newItem.price),
-      custom: newItem.custom,
-      originalDimensions: currentDimensions,
-    };
-
-    console.log("Eklenecek ürün:", itemToAdd);
-
-    // Update konti dimensions if needed
-    if (
-      !itemToAdd.custom &&
-      itemToAdd.productId &&
-      itemToAdd.productId !== "istemiyorum"
-    ) {
-      try {
-        // Update dimensions in the store - this will trigger recalculation
-        updateKontiDimensions(itemToAdd, "add");
-      } catch (dimensionError) {
-        console.error("Boyut güncellemede hata:", dimensionError);
-      }
-    }
-
-    // Ürünü ekle
-    setSavedItems((prev) => [...prev, itemToAdd]);
-
-    // Formu sıfırla
-    setNewItem({
-      category: "",
-      product: "",
-      productId: "",
-      price: "",
-      custom: false,
-      name: "",
-    });
-    setAdding(false);
-  }, [newItem, dimensions, setSavedItems, updateKontiDimensions]);
-  // Cancel adding new item
-  const handleCancelAdd = useCallback(() => {
-    setNewItem({
-      category: "",
-      product: "",
-      productId: "",
-      price: "",
-      custom: false,
-      name: "",
-    });
-    setAdding(false);
-  }, []);
-
-  // Edit existing item
-  const handleEditItem = useCallback((item, index) => {
-    setEditingItem(index);
-    setNewItem({
-      category: item.category,
-      product: item.product,
-      productId: item.productId,
-      price: item.price.toString(),
-      custom: item.custom,
-      name: item.custom ? item.product : "",
-    });
-  }, []);
-
-  // Save edited item
-  const handleSaveEdit = useCallback(() => {
-    if (editingItem === null) return;
-
-    if (
-      (newItem.custom && !newItem.name) ||
-      !newItem.category ||
-      !newItem.price
-    ) {
-      return; // Validation
-    }
-
-    // Get the original item before update
-    const originalItem = savedItems[editingItem];
-
-    const updatedItem = {
-      ...savedItems[editingItem],
-      category: newItem.category,
-      product: newItem.custom ? newItem.name : newItem.product,
-      productId: newItem.custom ? null : newItem.productId,
-      price: Number(newItem.price),
-      custom: newItem.custom,
-    };
-
-    // Check if category or product changed
-    const categoryChanged = originalItem.category !== updatedItem.category;
-    const productChanged = originalItem.productId !== updatedItem.productId;
-
-    // Adjust dimensions if category/product changed for artis items
-    if (categoryChanged || productChanged) {
-      // Remove effect of old item
-      if (originalItem.productId && !originalItem.custom) {
-        updateKontiDimensions(originalItem, "remove");
-      }
-
-      // Add effect of new item
-      if (updatedItem.productId && !updatedItem.custom) {
-        updateKontiDimensions(updatedItem, "add");
-      }
-    }
-
-    setSavedItems((prev) => {
-      const updated = [...prev];
-      updated[editingItem] = updatedItem;
-      return updated;
-    });
-
-    setNewItem({
-      category: "",
-      product: "",
-      productId: "",
-      price: "",
-      custom: false,
-      name: "",
-    });
-    setEditingItem(null);
-  }, [editingItem, newItem, savedItems, setSavedItems, updateKontiDimensions]);
-
-  // Delete item
-  const handleDeleteItem = useCallback(
-    (index) => {
-      const itemToDelete = savedItems[index];
-      const itemId = itemToDelete.id;
-
-      // First, update the saved items to remove the item
-      const updatedSavedItems = savedItems.filter((_, i) => i !== index);
-
-      if (itemToDelete.productId && !itemToDelete.custom) {
-        // Capture old dimensions to detect the change
-        const oldDimensions = {
-          kontiWidth: dimensions.kontiWidth,
-          kontiHeight: dimensions.kontiHeight,
-        };
-
-        // Kategori bilgisini al
-        const category = Object.values(categories).find(
-          (cat) =>
-            cat.propertyName?.toLowerCase() ===
-            itemToDelete.category?.toLowerCase()
-        );
-
-        // Tüm dinamik kategoriler için fiyat hesaplaması yapılması gereken durum
-        const isDynamicCategory =
-          category &&
-          ["artis", "metrekare", "cevre", "onYuzey", "tasDuvar"].includes(
-            category.priceFormat
-          );
-
-        if (isDynamicCategory) {
-          // Silinmekte olan ürünün türünü belirle (en/boy)
-          const isEnItem = itemToDelete.category.toLowerCase().includes("en");
-          const isBoyItem = itemToDelete.category.toLowerCase().includes("boy");
-
-          // Silinen ürünün boyut değişikliğini hesapla
-          const productData =
-            products[itemToDelete.category]?.[itemToDelete.productId];
-
-          if (productData) {
-            const productWidth = Number(productData.width || 0);
-            const productHeight = Number(productData.height || 0);
-
-            // Yeni boyutları hesapla (konti'den ürün boyutlarını çıkar)
-            let newWidth = oldDimensions.kontiWidth;
-            let newHeight = oldDimensions.kontiHeight;
-
-            if (isEnItem && productWidth > 0) {
-              newWidth = Math.max(0, oldDimensions.kontiWidth - productWidth);
-            }
-
-            if (isBoyItem && productHeight > 0) {
-              newHeight = Math.max(
-                0,
-                oldDimensions.kontiHeight - productHeight
-              );
-            }
-
-            // ÖNEMLİ: En/Boy ürünlerinin original dimensions değerlerini güncelle
-            // Önce mevcut state'e uygulanacak değişiklikleri hesapla
-            const updatedItems = updatedSavedItems.map((item) => {
-              if (isEnItem && item.category.toLowerCase().includes("boy")) {
-                return {
-                  ...item,
-                  originalDimensions: {
-                    ...item.originalDimensions,
-                    kontiWidth: newWidth, // Buradaki kritik değişiklik
-                  },
-                };
-              } else if (
-                isBoyItem &&
-                item.category.toLowerCase().includes("en")
-              ) {
-                return {
-                  ...item,
-                  originalDimensions: {
-                    ...item.originalDimensions,
-                    kontiHeight: newHeight, // Buradaki kritik değişiklik
-                  },
-                };
-              }
-              return item;
-            });
-
-            // Önce state'i güncelle, SONRA boyutları değiştir
-            setSavedItems(updatedItems);
-
-            // Doğrudan store'u güncelle, initializeDimensions kullanarak
-            initializeDimensions({
-              kontiWidth: newWidth,
-              kontiHeight: newHeight,
-              anaWidth: newWidth,
-              anaHeight: newHeight,
-            });
-
-            // Kısa bir gecikme ile fiyatları yeniden hesapla
-            setTimeout(() => {
-              try {
-                // Zorla fiyat hesaplamalarını yap
-                forceRecalculateWithDimensions({
-                  kontiWidth: newWidth,
-                  kontiHeight: newHeight,
-                });
-
-                // ÖNEMLİ DEĞİŞİKLİK: Artis kategorileri için yeniden hesaplama
-                if (category.priceFormat === "artis") {
-                  recalculateAllArtisItems();
-                }
-
-                // Tüm dinamik kategorili ürünleri yeniden hesapla
-                recalculateAllDynamicItems();
-
-                // Fiyat hesaplamaları için sinyal gönder
-                setShouldRecalcPrices(true);
-                setTimeout(() => setShouldRecalcPrices(false), 200);
-              } catch (error) {
-                console.error("Ürün silme işleminde hata:", error);
-              }
-            }, 100);
-          }
-        } else {
-          // Dinamik olmayan kategoriler için sadece silme işlemi yap
-          setSavedItems(updatedSavedItems);
-        }
-      } else {
-        // Özel ürünler için sadece silme işlemi yap
-        setSavedItems(updatedSavedItems);
-      }
-
-      // Store the deleted item ID in a ref
-      if (!deletedItems.current.includes(itemId)) {
-        deletedItems.current.push(itemId);
-      }
-    },
-    [
-      savedItems,
-      setSavedItems,
-      categories,
-      products,
-      dimensions,
-      setShouldRecalcPrices,
-      forceRecalculateWithDimensions,
-      recalculateAllArtisItems,
-      recalculateAllDynamicItems,
-      initializeDimensions,
-    ]
-  );
-
-  // New function to force recalculation with explicit dimensions - without circular dependency
-
-  // OrderDetails gibi store'un needsRecalculation flag'ini dinleyin
+  // 3. Zustand store'daki değişiklikleri izle
   useEffect(() => {
     if (needsRecalculation && savedItems.length > 0 && !isUpdating.current) {
-      isUpdating.current = true;
-
-      try {
-        // Store'dan en güncel değerleri al
-        const storeState = useDimensionsStore.getState();
-        // DİREKT OLARAK ZUSTAND STORE'DAKİ GÜNCEL BOYUTLARLA HESAPLA
-        forceRecalculateWithDimensions({
-          kontiWidth: storeState.kontiWidth,
-          kontiHeight: storeState.kontiHeight,
-          anaWidth: storeState.anaWidth,
-          anaHeight: storeState.anaHeight,
-        });
-
-        // Flag'i sıfırla
-        resetRecalculationFlag();
-
-        // Daha güçlü senkronizasyon için ana bileşene sinyal gönder
-        setShouldRecalcPrices(true);
-        setTimeout(() => {
-          setShouldRecalcPrices(false);
-          isUpdating.current = false;
-        }, 100);
-      } catch (error) {
-        console.error("BonusItems recalculation error:", error);
-        isUpdating.current = false;
-        resetRecalculationFlag();
-      }
+      console.log("Dimension store'dan recalculation sinyali alındı");
+      recalculateAllDynamicPrices();
+      resetRecalculationFlag();
     }
   }, [
     needsRecalculation,
     savedItems,
-    setSavedItems,
-    forceRecalculateWithDimensions,
+    recalculateAllDynamicPrices,
     resetRecalculationFlag,
-    setShouldRecalcPrices,
-  ]);
-
-  // shouldRecalc prop'u değişince fiyatları güncelle (OrderDetails'dan gönderilen sinyal)
-  useEffect(() => {
-    if (shouldRecalc && savedItems.length > 0 && !isUpdating.current) {
-      // Her iki hesaplama fonksiyonunu çağır
-      forceRecalculateWithDimensions({
-        kontiWidth,
-        kontiHeight,
-        anaWidth,
-        anaHeight,
-      });
-
-      // En/Boy ürünlerinde son konti durumuna göre güncelleme için
-      recalculateAllArtisItems();
-    }
-  }, [
-    shouldRecalc,
-    savedItems.length,
-    forceRecalculateWithDimensions,
-    recalculateAllArtisItems,
-    kontiWidth,
-    kontiHeight,
-  ]);
-
-  // Kritik useEffect: konti boyutları değiştiğinde originalDimensions güncelle
-  useEffect(() => {
-    // Boyut değişikliklerini izle
-    if (
-      lastDimensions.current?.kontiWidth !== dimensions.kontiWidth ||
-      lastDimensions.current?.kontiHeight !== dimensions.kontiHeight
-    ) {
-      // OrderDetails'da EN veya BOY değiştiği için originalDimensions güncellenmeli
-      // Kalan öğelerin original dimensions değerlerini güncelle
-      const updatedItems = savedItems.map((item) => {
-        if (
-          !item.custom &&
-          item.productId &&
-          item.productId !== "istemiyorum"
-        ) {
-          // EN ürününde BOY değişmişse
-          if (
-            item.category.toLowerCase().includes("en") &&
-            lastDimensions.current?.kontiHeight !== dimensions.kontiHeight
-          ) {
-            return {
-              ...item,
-              originalDimensions: {
-                ...item.originalDimensions,
-                kontiHeight: dimensions.kontiHeight, // Boy kategorisindeki değişikliği EN'e yansıt
-              },
-            };
-          }
-          // BOY ürününde EN değişmişse
-          else if (
-            item.category.toLowerCase().includes("boy") &&
-            lastDimensions.current?.kontiWidth !== dimensions.kontiWidth
-          ) {
-            return {
-              ...item,
-              originalDimensions: {
-                ...item.originalDimensions,
-                kontiWidth: dimensions.kontiWidth, // EN kategorisindeki değişikliği BOY'a yansıt
-              },
-            };
-          }
-        }
-        return item;
-      });
-
-      // Eğer değişiklik olduysa state'i güncelle
-      if (JSON.stringify(updatedItems) !== JSON.stringify(savedItems)) {
-        setSavedItems(updatedItems);
-        // Kısa bir gecikmeyle fiyatları zorla yeniden hesapla
-        setTimeout(() => {
-          if (!isUpdating.current) {
-            forceRecalculateWithDimensions({
-              kontiWidth: dimensions.kontiWidth,
-              kontiHeight: dimensions.kontiHeight,
-              anaWidth: dimensions.anaWidth,
-              anaHeight: dimensions.anaHeight,
-            });
-          }
-        }, 100);
-      }
-
-      // Son boyutları kaydet
-      lastDimensions.current = {
-        kontiWidth: dimensions.kontiWidth,
-        kontiHeight: dimensions.kontiHeight,
-      };
-    }
-  }, [
-    dimensions.kontiWidth,
-    dimensions.kontiHeight,
-    savedItems,
-    setSavedItems,
-    forceRecalculateWithDimensions,
   ]);
 
   return (
     <div className="space-y-3">
-      {/* Item List */}
+      {/* Öğe Listesi */}
       {savedItems.length > 0 && (
-        <div className="mb-4 space-y-1.5">
+        <div className="grid grid-cols-1 space-y-0.5">
           {savedItems.map((item, index) => (
             <div
               key={item.id || index}
-              className={`grid grid-cols-[2fr,2fr,1fr,auto] items-center bg-gray-800/40 backdrop-blur-sm px-3 py-1.5 rounded-md transition-all duration-200 border border-transparent ${
-                editingItem === index
-                  ? "bg-gray-700/50 border-indigo-500/30 shadow-md"
-                  : "hover:bg-gray-800/60 hover:border-gray-700/40"
-              }`}
+              className="bg-gray-800/30 rounded overflow-hidden"
             >
-              {editingItem === index ? (
-                <>
-                  <div>
-                    <select
-                      value={newItem.category}
-                      onChange={handleCategoryChange}
-                      className="bg-gray-700/90 text-xs text-gray-200 px-2 py-1.5 rounded border border-gray-600/50 focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/20 outline-none w-full transition-all duration-200"
-                    >
-                      <option value="">Kategori Seçin</option>
-                      {categoryOptions.map((option) => (
-                        <option key={option.value} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div>
-                    {newItem.custom ? (
-                      <input
-                        type="text"
-                        value={newItem.name}
-                        onChange={handleNameChange}
-                        placeholder="Ürün adı"
-                        className="bg-gray-700/90 text-xs text-gray-200 px-2 py-1.5 rounded border border-gray-600/50 focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/20 outline-none w-full transition-all duration-200"
-                      />
-                    ) : (
-                      <select
-                        value={
-                          newItem.productId
-                            ? JSON.stringify({
-                                id: newItem.productId,
-                                name: newItem.product,
-                                price: newItem.price,
-                              })
-                            : ""
-                        }
-                        onChange={handleProductChange}
-                        className="bg-gray-700/90 text-xs text-gray-200 px-2 py-1.5 rounded border border-gray-600/50 focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/20 outline-none w-full transition-all duration-200"
-                      >
-                        <option value="">Ürün Seçin</option>
-                        {productOptions.map((product) => (
-                          <option
-                            key={product.id}
-                            value={JSON.stringify({
-                              id: product.id,
-                              name: product.name,
-                              price: product.price,
-                            })}
+              <div className="divide-y divide-gray-700/30">
+                <div className="hover:bg-gray-700/20 transition-colors duration-150">
+                  <div className="grid grid-cols-[2fr,2fr,1fr,auto] items-center px-2 py-1.5 gap-1">
+                    {editingItem === index ? (
+                      <>
+                        <div>
+                          <select
+                            value={newItem.category}
+                            onChange={handleCategoryChange}
+                            className="bg-gray-600/90 text-[0.75rem] text-gray-200 px-2 py-1.5 rounded border border-gray-500/40 focus:border-indigo-500/50 outline-none w-full transition-all duration-200"
+                            style={{ WebkitFontSmoothing: "antialiased" }}
                           >
-                            {product.name} -{" "}
-                            {Number(product.price).toLocaleString("tr-TR")}₺
-                          </option>
-                        ))}
-                        <option value="custom">Diğer</option>
-                      </select>
+                            <option value="">Kategori Seçin</option>
+                            {categoryOptions.map((option) => (
+                              <option key={option.value} value={option.value}>
+                                {option.label}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div>
+                          {newItem.custom ? (
+                            <input
+                              type="text"
+                              value={newItem.name}
+                              onChange={handleNameChange}
+                              placeholder="Ürün adı"
+                              className="bg-gray-600/90 text-[0.75rem] text-gray-200 px-2 py-1.5 rounded border border-gray-500/40 focus:border-indigo-500/50 outline-none w-full transition-all duration-200"
+                              style={{ WebkitFontSmoothing: "antialiased" }}
+                            />
+                          ) : (
+                            <select
+                              value={
+                                newItem.productId
+                                  ? JSON.stringify({
+                                      id: newItem.productId,
+                                      name: newItem.product,
+                                      price: newItem.price,
+                                    })
+                                  : ""
+                              }
+                              onChange={handleProductChange}
+                              className="bg-gray-600/90 text-[0.75rem] text-gray-200 px-2 py-1.5 rounded border border-gray-500/40 focus:border-indigo-500/50 outline-none w-full transition-all duration-200"
+                              style={{ WebkitFontSmoothing: "antialiased" }}
+                            >
+                              <option value="">Ürün Seçin</option>
+                              {productOptions.map((product) => (
+                                <option
+                                  key={product.id}
+                                  value={JSON.stringify({
+                                    id: product.id,
+                                    name: product.name,
+                                    price: product.price,
+                                  })}
+                                >
+                                  {product.name} -{" "}
+                                  {Number(product.price).toLocaleString(
+                                    "tr-TR"
+                                  )}
+                                  ₺
+                                </option>
+                              ))}
+                              <option value="custom">Diğer</option>
+                            </select>
+                          )}
+                        </div>
+
+                        <input
+                          type="number"
+                          value={newItem.price}
+                          onChange={handlePriceChange}
+                          placeholder="Fiyat"
+                          className="bg-gray-600/90 text-[0.75rem] text-gray-200 px-2 py-1.5 rounded border border-gray-500/40 focus:border-green-500/50 outline-none w-full transition-all duration-200"
+                          style={{ WebkitFontSmoothing: "antialiased" }}
+                        />
+
+                        <div className="flex gap-1">
+                          <button
+                            onClick={handleSaveEdit}
+                            className="text-green-400 hover:text-green-300 bg-green-500/10 hover:bg-green-500/20 rounded p-1 transition-colors duration-150"
+                            title="Kaydet"
+                          >
+                            <svg
+                              className="w-4 h-4"
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                              shapeRendering="geometricPrecision"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth="2"
+                                d="M5 13l4 4L19 7"
+                              />
+                            </svg>
+                          </button>
+                          <button
+                            onClick={() => setEditingItem(null)}
+                            className="text-gray-400 hover:text-gray-300 bg-gray-500/10 hover:bg-gray-500/20 rounded p-1 transition-colors duration-150"
+                            title="İptal"
+                          >
+                            <svg
+                              className="w-4 h-4"
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                              shapeRendering="geometricPrecision"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth="2"
+                                d="M6 18L18 6M6 6l12 12"
+                              />
+                            </svg>
+                          </button>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <span
+                          className="text-gray-400 text-[0.75rem] truncate"
+                          style={{
+                            textRendering: "optimizeLegibility",
+                            WebkitFontSmoothing: "antialiased",
+                          }}
+                        >
+                          {categoryOptions.find(
+                            (c) => c.value === item.category
+                          )?.label || item.category}
+                        </span>
+                        <span
+                          className="text-gray-300 text-[0.75rem] truncate cursor-pointer hover:text-indigo-300 transition-colors duration-150"
+                          onClick={() => handleEditItem(item, index)}
+                          style={{
+                            textRendering: "optimizeLegibility",
+                            WebkitFontSmoothing: "antialiased",
+                          }}
+                        >
+                          {item.product}
+                        </span>
+                        <span
+                          className="text-green-400 text-[0.75rem] cursor-pointer hover:text-green-300 transition-colors duration-150"
+                          onClick={() => handleEditItem(item, index)}
+                          style={{
+                            textRendering: "optimizeLegibility",
+                            WebkitFontSmoothing: "antialiased",
+                          }}
+                        >
+                          {Number(item.price)?.toLocaleString("tr-TR")}₺
+                        </span>
+                        <div className="flex gap-1">
+                          <button
+                            onClick={() => handleDeleteItem(index)}
+                            className="text-red-400 hover:text-red-300 bg-red-500/10 hover:bg-red-500/20 rounded p-1 transition-colors duration-150"
+                            title="Sil"
+                          >
+                            <svg
+                              className="w-4 h-4"
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                              shapeRendering="geometricPrecision"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth="2"
+                                d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                              />
+                            </svg>
+                          </button>
+                        </div>
+                      </>
                     )}
                   </div>
-
-                  <div>
-                    <input
-                      type="number"
-                      value={newItem.price}
-                      onChange={handlePriceChange}
-                      placeholder="Fiyat"
-                      className="bg-gray-700/90 text-xs text-gray-200 px-2 py-1.5 rounded border border-gray-600/50 focus:border-green-500/50 focus:ring-1 focus:ring-green-500/20 outline-none w-full transition-all duration-200"
-                    />
-                  </div>
-
-                  <div className="flex gap-1.5 justify-center">
-                    <button
-                      onClick={handleSaveEdit}
-                      className="text-green-400 hover:text-green-300 bg-green-500/10 hover:bg-green-500/20 p-1.5 rounded-md transition-all duration-200"
-                    >
-                      <svg
-                        className="w-3.5 h-3.5"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                        shapeRendering="geometricPrecision"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth="2"
-                          d="M5 13l4 4L19 7"
-                        />
-                      </svg>
-                    </button>
-                    <button
-                      onClick={() => setEditingItem(null)}
-                      className="text-gray-400 hover:text-gray-300 bg-gray-500/10 hover:bg-gray-500/20 p-1.5 rounded-md transition-all duration-200"
-                    >
-                      <svg
-                        className="w-3.5 h-3.5"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                        shapeRendering="geometricPrecision"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth="2"
-                          d="M6 18L18 6M6 6l12 12"
-                        />
-                      </svg>
-                    </button>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <span className="text-gray-400 text-xs truncate font-medium">
-                    {categoryOptions.find((c) => c.value === item.category)
-                      ?.label || item.category}
-                  </span>
-                  <span className="text-gray-300 text-xs truncate">
-                    {item.product}
-                  </span>
-                  <span className="text-green-400 text-xs font-medium">
-                    {Number(item.price)?.toLocaleString("tr-TR")}₺
-                  </span>
-                  <div className="flex gap-1.5 justify-center">
-                    <button
-                      onClick={() => handleEditItem(item, index)}
-                      className="text-blue-400 hover:text-blue-300 bg-blue-500/10 hover:bg-blue-500/20 p-1.5 rounded-md transition-all duration-200"
-                      title="Düzenle"
-                    >
-                      <svg
-                        className="w-3.5 h-3.5"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                        shapeRendering="geometricPrecision"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth="2"
-                          d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
-                        />
-                      </svg>
-                    </button>
-                    <button
-                      onClick={() => handleDeleteItem(index)}
-                      className="text-red-400 hover:text-red-300 bg-red-500/10 hover:bg-red-500/20 p-1.5 rounded-md transition-all duration-200"
-                      title="Sil"
-                    >
-                      <svg
-                        className="w-3.5 h-3.5"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                        shapeRendering="geometricPrecision"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth="2"
-                          d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                        />
-                      </svg>
-                    </button>
-                  </div>
-                </>
-              )}
+                </div>
+              </div>
             </div>
           ))}
         </div>
       )}
 
-      {/* Add New Item Form */}
+      {/* Yeni Öğe Ekleme Formu */}
       {adding ? (
-        <div className="grid grid-cols-[2fr,2fr,1fr,auto] gap-2 items-center bg-gray-800/40 backdrop-blur-sm p-3 rounded-md border border-gray-700/40 shadow-md">
-          <div>
-            <select
-              value={newItem.category}
-              onChange={handleCategoryChange}
-              className="bg-gray-700/90 text-xs text-gray-200 px-2 py-1.5 rounded border border-gray-600/50 focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/20 outline-none w-full transition-all duration-200"
-            >
-              <option value="">Kategori Seçin</option>
-              {categoryOptions.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            {newItem.custom ? (
-              <input
-                type="text"
-                value={newItem.name}
-                onChange={handleNameChange}
-                placeholder="Ürün adı"
-                className="bg-gray-700/90 text-xs text-gray-200 px-2 py-1.5 rounded border border-gray-600/50 focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/20 outline-none w-full transition-all duration-200"
-              />
-            ) : (
+        <div className="bg-gray-800/30 rounded p-3 border border-gray-700/30">
+          <div className="grid grid-cols-[2fr,2fr,1fr,auto] items-center gap-2">
+            <div>
               <select
-                value={
-                  newItem.productId
-                    ? JSON.stringify({
-                        id: newItem.productId,
-                        name: newItem.product,
-                        price: newItem.price,
-                      })
-                    : ""
-                }
-                onChange={handleProductChange}
-                disabled={!newItem.category}
-                className="bg-gray-700/90 text-xs text-gray-200 px-2 py-1.5 rounded border border-gray-600/50 focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/20 outline-none w-full disabled:opacity-50 transition-all duration-200"
+                value={newItem.category}
+                onChange={handleCategoryChange}
+                className="bg-gray-600/90 text-[0.75rem] text-gray-200 px-2 py-1.5 rounded border border-gray-500/40 focus:border-indigo-500/50 outline-none w-full transition-all duration-200"
+                style={{ WebkitFontSmoothing: "antialiased" }}
               >
-                <option value="">Ürün Seçin</option>
-                {productOptions.map((product) => (
-                  <option
-                    key={product.id}
-                    value={JSON.stringify({
-                      id: product.id,
-                      name: product.name,
-                      price: product.price,
-                    })}
-                  >
-                    {product.name} -{" "}
-                    {Number(product.price).toLocaleString("tr-TR")}₺
+                <option value="">Kategori Seçin</option>
+                {categoryOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
                   </option>
                 ))}
-                <option value="custom">Diğer</option>
               </select>
-            )}
-          </div>
+            </div>
 
-          <div>
-            <input
-              type="number"
-              value={newItem.price}
-              onChange={handlePriceChange}
-              placeholder="Fiyat"
-              className="bg-gray-700/90 text-xs text-gray-200 px-2 py-1.5 rounded border border-gray-600/50 focus:border-green-500/50 focus:ring-1 focus:ring-green-500/20 outline-none w-full transition-all duration-200"
-            />
-          </div>
+            <div>
+              {newItem.custom ? (
+                <input
+                  type="text"
+                  value={newItem.name}
+                  onChange={handleNameChange}
+                  placeholder="Ürün adı"
+                  className="bg-gray-600/90 text-[0.75rem] text-gray-200 px-2 py-1.5 rounded border border-gray-500/40 focus:border-indigo-500/50 outline-none w-full transition-all duration-200"
+                  style={{ WebkitFontSmoothing: "antialiased" }}
+                />
+              ) : (
+                <select
+                  value={
+                    newItem.productId
+                      ? JSON.stringify({
+                          id: newItem.productId,
+                          name: newItem.product,
+                          price: newItem.price,
+                        })
+                      : ""
+                  }
+                  onChange={handleProductChange}
+                  disabled={!newItem.category}
+                  className="bg-gray-600/90 text-[0.75rem] text-gray-200 px-2 py-1.5 rounded border border-gray-500/40 focus:border-indigo-500/50 outline-none w-full transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                  style={{ WebkitFontSmoothing: "antialiased" }}
+                >
+                  <option value="">Ürün Seçin</option>
+                  {productOptions.map((product) => (
+                    <option
+                      key={product.id}
+                      value={JSON.stringify({
+                        id: product.id,
+                        name: product.name,
+                        price: product.price,
+                      })}
+                    >
+                      {product.name} -{" "}
+                      {Number(product.price).toLocaleString("tr-TR")}₺
+                    </option>
+                  ))}
+                  <option value="custom">Diğer</option>
+                </select>
+              )}
+            </div>
 
-          <div className="flex gap-1.5 justify-center">
-            <button
-              onClick={handleAddItem}
-              className="text-green-400 hover:text-green-300 bg-green-500/10 hover:bg-green-500/20 p-1.5 rounded-md transition-all duration-200"
-              title="Ekle"
-            >
-              <svg
-                className="w-3.5 h-3.5"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-                shapeRendering="geometricPrecision"
+            <div>
+              <input
+                type="number"
+                value={newItem.price}
+                onChange={handlePriceChange}
+                placeholder="Fiyat"
+                className="bg-gray-600/90 text-[0.75rem] text-gray-200 px-2 py-1.5 rounded border border-gray-500/40 focus:border-green-500/50 outline-none w-full transition-all duration-200"
+                style={{ WebkitFontSmoothing: "antialiased" }}
+              />
+            </div>
+
+            <div className="flex gap-1">
+              <button
+                onClick={handleAddItem}
+                className="text-green-400 hover:text-green-300 bg-green-500/10 hover:bg-green-500/20 rounded p-1 transition-colors duration-150"
+                title="Ekle"
               >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth="2"
-                  d="M5 13l4 4L19 7"
-                />
-              </svg>
-            </button>
-            <button
-              onClick={handleCancelAdd}
-              className="text-gray-400 hover:text-gray-300 bg-gray-500/10 hover:bg-gray-500/20 p-1.5 rounded-md transition-all duration-200"
-              title="İptal"
-            >
-              <svg
-                className="w-3.5 h-3.5"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-                shapeRendering="geometricPrecision"
+                <svg
+                  className="w-4 h-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                  shapeRendering="geometricPrecision"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    d="M5 13l4 4L19 7"
+                  />
+                </svg>
+              </button>
+              <button
+                onClick={handleCancelAdd}
+                className="text-gray-400 hover:text-gray-300 bg-gray-500/10 hover:bg-gray-500/20 rounded p-1 transition-colors duration-150"
+                title="İptal"
               >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth="2"
-                  d="M6 18L18 6M6 6l12 12"
-                />
-              </svg>
-            </button>
+                <svg
+                  className="w-4 h-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                  shapeRendering="geometricPrecision"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    d="M6 18L18 6M6 6l12 12"
+                  />
+                </svg>
+              </button>
+            </div>
           </div>
         </div>
       ) : (
-        <div className="flex justify-center">
-          <button
-            onClick={() => setAdding(true)}
-            className="flex items-center justify-center gap-2 text-blue-400 hover:text-blue-300 bg-blue-500/10 hover:bg-blue-500/20 py-2 px-3 rounded-lg transition-all duration-200"
-            title="Bonus Ürün Ekle"
-          >
-            <svg
-              className="w-4 h-4"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-              shapeRendering="geometricPrecision"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth="1.5"
-                d="M12 4v16m8-8H4"
-              />
-            </svg>
-            <span className="text-xs font-medium">Bonus Ürün Ekle</span>
-          </button>
-        </div>
+        <>
+          {savedItems.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-4 px-3 bg-gray-800/20 rounded-lg border border-gray-700/30">
+              <p className="text-gray-400 text-sm">
+                Henüz bonus ürün eklenmemiş
+              </p>
+              <button
+                onClick={() => setAdding(true)}
+                className="mt-2 flex items-center justify-center gap-2 text-blue-400 hover:text-blue-300 bg-blue-500/10 hover:bg-blue-500/20 py-1.5 px-3 rounded-md transition-all duration-200"
+              >
+                <svg
+                  className="w-3.5 h-3.5"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                  shapeRendering="geometricPrecision"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="1.5"
+                    d="M12 4v16m8-8H4"
+                  />
+                </svg>
+                <span className="text-xs font-medium">Bonus Ürün Ekle</span>
+              </button>
+            </div>
+          ) : (
+            <div className="flex justify-center">
+              <button
+                onClick={() => setAdding(true)}
+                className="flex items-center justify-center gap-2 text-blue-400 hover:text-blue-300 bg-blue-500/10 hover:bg-blue-500/20 py-2 px-3 rounded-lg transition-all duration-200"
+                title="Bonus Ürün Ekle"
+              >
+                <svg
+                  className="w-4 h-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                  shapeRendering="geometricPrecision"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="1.5"
+                    d="M12 4v16m8-8H4"
+                  />
+                </svg>
+                <span className="text-xs font-medium">Bonus Ürün Ekle</span>
+              </button>
+            </div>
+          )}
+        </>
       )}
     </div>
   );
@@ -1631,8 +1301,7 @@ BonusItems.propTypes = {
   setSavedItems: PropTypes.func.isRequired,
   shouldRecalc: PropTypes.bool,
   setShouldRecalcPrices: PropTypes.func,
-  skipInitialCalc: PropTypes.bool, // Eksik prop tanımı
-  isFirstLoad: PropTypes.bool, // Eksik prop tanımı
+  skipInitialCalc: PropTypes.bool,
 };
 
 export default BonusItems;

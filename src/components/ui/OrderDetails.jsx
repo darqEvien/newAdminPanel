@@ -819,7 +819,7 @@ const OrderDetails = ({
         // Boyutlar değiştiyse fiyatları yeniden hesapla
         if (dimensionsChanged) {
           setShouldRecalcPrices(true);
-          setTimeout(() => setShouldRecalcPrices(false), 150);
+          setTimeout(() => setShouldRecalcPrices(false), 300);
         }
       } else {
         // Artis kategorisi değilse sadece sil ve tekrar indeksle
@@ -863,13 +863,6 @@ const OrderDetails = ({
             key={categoryName}
             className="bg-gray-800/30 rounded overflow-hidden"
           >
-            {/* Kategori başlığı - ekstra başlık isteniyorsa burayı aktifleştirin */}
-            {/* 
-            <div className="bg-gradient-to-r from-gray-700/40 to-gray-700/20 px-2.5 py-1 border-b border-gray-700/30">
-              <span className="text-xs font-medium text-gray-300">{category?.title || categoryName}</span>
-            </div>
-            */}
-
             <div className="divide-y divide-gray-700/30">
               {Object.entries(categoryProducts).map(
                 ([productIndex, product]) => (
