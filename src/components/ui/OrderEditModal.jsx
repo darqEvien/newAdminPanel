@@ -564,17 +564,17 @@ const OrderEditModal = ({
                         <h3 className="text-sm font-medium text-gray-300">
                           Bonus Ürünler
                         </h3>
-                        <BonusItems
-                          categories={categories}
-                          products={products}
-                          savedItems={savedItems}
-                          setSavedItems={setSavedItems}
-                          shouldRecalc={shouldRecalcPrices}
-                          setShouldRecalcPrices={setShouldRecalcPrices}
-                          skipInitialCalc={skipInitialCalc} // Yeni prop ekleme
-                          isFirstLoad={firstLoadRef.current}
-                        />
                       </div>
+                      <BonusItems
+                        categories={categories}
+                        products={products}
+                        savedItems={savedItems}
+                        setSavedItems={setSavedItems}
+                        shouldRecalc={shouldRecalcPrices}
+                        setShouldRecalcPrices={setShouldRecalcPrices}
+                        skipInitialCalc={skipInitialCalc} // Yeni prop ekleme
+                        isFirstLoad={firstLoadRef.current}
+                      />
                     </div>
                   </div>
                 </div>
