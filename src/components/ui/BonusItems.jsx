@@ -440,161 +440,167 @@ const BonusItems = ({
     getCategoryData,
   ]);
 
-  // Ürün sil
-  // handleDeleteItem fonksiyonunu tamamen güncelleyelim
+  // handleDeleteItem fonksiyonunu tamamen değiştirelim
 
   const handleDeleteItem = useCallback(
     (index) => {
       const itemToDelete = savedItems[index];
       if (!itemToDelete) return;
 
-      const itemId = itemToDelete.id;
+      // Silinen ürün bilgilerini kaydet (BST: Boyut Silme İşlemi öncesi)
+      const deletedCategory = itemToDelete.category;
+      const isArtisItem = () => {
+        const category = getCategoryData(deletedCategory);
+        return category?.priceFormat === "artis";
+      };
+      const isEnItem = deletedCategory?.toLowerCase().includes("en");
+      const isBoyItem = deletedCategory?.toLowerCase().includes("boy");
 
-      // Artis kategorisindeki ürünler için özel işlem
+      // Boyutları kaydet (BST: Boyut Silme İşlemi öncesi)
+      const originalWidth = dimensions.kontiWidth;
+      const originalHeight = dimensions.kontiHeight;
+
+      // İşlem sırasında güncellemeleri bloklayalım
+      isUpdating.current = true;
+
+      // 1. Önce öğeyi listeden kaldıralım
+      setSavedItems((prev) => prev.filter((_, i) => i !== index));
+
+      // Silinen öğenin ID'sini kaydet
+      if (!deletedItems.current.includes(itemToDelete.id)) {
+        deletedItems.current.push(itemToDelete.id);
+      }
+
+      // 2. ARTIS KATEGORİSİ İÇİN ÖZEL İŞLEM
       if (
         !itemToDelete.custom &&
         itemToDelete.productId &&
-        itemToDelete.productId !== "istemiyorum"
+        itemToDelete.productId !== "istemiyorum" &&
+        isArtisItem()
       ) {
-        const categoryName = itemToDelete.category;
-        const category = getCategoryData(categoryName);
+        console.log(
+          `Artis kategorili ${isEnItem ? "EN" : "BOY"} ürünü siliniyor:`,
+          itemToDelete
+        );
 
-        // Sadece artis kategorisi için özel işlem yapıyoruz
-        if (category?.priceFormat === "artis") {
-          console.log("Artis kategorili ürün siliniyor:", itemToDelete);
+        // 3. BOYUTLARI GÜNCELLE - ÖNEMLİ: Önce boyutları güncelle!
+        updateKontiDimensions(itemToDelete, "remove");
 
-          // Boyut değişikliği öncesi mevcut boyutları kaydet
-          const originalWidth = dimensions.kontiWidth;
-          const originalHeight = dimensions.kontiHeight;
+        // 4. BOYUTLAR GÜNCELLENDİKTEN SONRA
+        // ÖNEMLİ: Burada daha uzun bir gecikme kullan ve store'un güncellenmesini bekle
+        setTimeout(() => {
+          // Store'dan güncel boyutları MANUEL olarak al - dimensions reaktif olduğundan hemen güncellenmeyebilir
+          const actualWidth = useDimensionsStore.getState().kontiWidth;
+          const actualHeight = useDimensionsStore.getState().kontiHeight;
 
-          // Önce boyutları güncelle
-          updateKontiDimensions(itemToDelete, "remove");
+          console.log(
+            `Boyut değişimi (store'dan kontrol): ${originalWidth}x${originalHeight} -> ${actualWidth}x${actualHeight}`
+          );
 
-          // Öğeyi listeden çıkar
-          setSavedItems((prev) => {
-            const updatedItems = prev.filter((_, i) => i !== index);
-            return updatedItems;
-          });
+          // 5. ARTIS ÜRÜNLERİN FİYATLARINI MANUEL GÜNCELLE
+          // Kalan artis ürünlerinin fiyatlarını yeniden hesapla
+          setSavedItems((prevItems) => {
+            // Her bir ürünü kontrol et
+            const updatedItems = prevItems.map((item) => {
+              // Sadece artis kategorisindeki ürünleri güncelle
+              if (
+                !item.custom &&
+                item.productId &&
+                item.productId !== "istemiyorum"
+              ) {
+                const itemCategory = getCategoryData(item.category);
 
-          // Silinen öğenin ID'sini kaydet
-          if (!deletedItems.current.includes(itemId)) {
-            deletedItems.current.push(itemId);
-          }
+                if (itemCategory?.priceFormat === "artis") {
+                  const itemIsEn = item.category.toLowerCase().includes("en");
+                  const itemIsBoy = item.category.toLowerCase().includes("boy");
 
-          // Silinen ürünün türüne göre hangi boyut değişti?
-          const isWidthChanged = itemToDelete.category
-            .toLowerCase()
-            .includes("en");
-          const isHeightChanged = itemToDelete.category
-            .toLowerCase()
-            .includes("boy");
+                  const productData = getProductData(
+                    item.category,
+                    item.productId
+                  );
+                  if (productData) {
+                    const basePrice = Number(productData.price || 0);
 
-          // Gecikmeyle kalan artis ürünlerinin fiyatlarını yeniden hesapla
-          setTimeout(() => {
-            console.log("Artis ürün silme sonrası fiyat güncelleme başlıyor");
-
-            // Son boyutları al
-            const newWidth = dimensions.kontiWidth;
-            const newHeight = dimensions.kontiHeight;
-            console.log(
-              `Boyut değişimi: ${originalWidth}x${originalHeight} -> ${newWidth}x${newHeight}`
-            );
-
-            // Kalan artis ürünlerinin fiyatlarını güncelle
-            setSavedItems((prevItems) => {
-              const items = [...prevItems];
-              let hasChanges = false;
-
-              // Her bir ürünü kontrol et
-              for (let i = 0; i < items.length; i++) {
-                const item = items[i];
-
-                // Sadece artis kategorisindeki ürünleri güncelle
-                if (
-                  !item.custom &&
-                  item.productId &&
-                  item.productId !== "istemiyorum"
-                ) {
-                  const itemCategoryName = item.category;
-                  const itemCategory = getCategoryData(itemCategoryName);
-
-                  if (itemCategory?.priceFormat === "artis") {
-                    const isItemEn = itemCategoryName
-                      .toLowerCase()
-                      .includes("en");
-                    const isItemBoy = itemCategoryName
-                      .toLowerCase()
-                      .includes("boy");
-
-                    const productData = getProductData(
-                      itemCategoryName,
-                      item.productId
-                    );
-                    if (productData) {
-                      const basePrice = Number(productData.price || 0);
-                      const productWidth = Number(productData.width || 0);
+                    // EN ürunü silindiğinde BOY ürünlerini güncelle
+                    if (isEnItem && itemIsBoy) {
                       const productHeight = Number(productData.height || 0);
+                      // DÜZELTME: Reaktif dimensions yerine store'dan güncel değeri kullan
+                      const newPrice = actualWidth * productHeight * basePrice;
 
-                      let newPrice = item.price;
+                      console.log(
+                        `BOY ürünü "${item.product}" EN silindikten sonra güncelleniyor:`
+                      );
+                      console.log(
+                        `Eski fiyat: ${item.price}, Yeni fiyat: ${newPrice}`
+                      );
+                      console.log(
+                        `Hesaplama: ${actualWidth} x ${productHeight} x ${basePrice} = ${newPrice}`
+                      );
 
-                      // En ürünlerinin fiyatını yükseklik değiştiyse güncelle
-                      if (isItemEn && isHeightChanged) {
-                        // En ürünleri boy değişiminden etkilenir
-                        newPrice = newHeight * productWidth * basePrice;
-                        console.log(
-                          `En ürünü "${item.product}" boy değişiminden sonra güncelleniyor: ` +
-                            `Yeni yükseklik=${newHeight}, Width=${productWidth}, Fiyat=${newPrice}`
-                        );
-                      }
-                      // Boy ürünlerinin fiyatını genişlik değiştiyse güncelle
-                      else if (isItemBoy && isWidthChanged) {
-                        // Boy ürünleri en değişiminden etkilenir
-                        newPrice = newWidth * productHeight * basePrice;
-                        console.log(
-                          `Boy ürünü "${item.product}" en değişiminden sonra güncelleniyor: ` +
-                            `Yeni genişlik=${newWidth}, Height=${productHeight}, Fiyat=${newPrice}`
-                        );
-                      }
+                      return {
+                        ...item,
+                        price: newPrice,
+                      };
+                    }
 
-                      // Fiyat değiştiyse güncelle
-                      if (Math.abs(newPrice - item.price) > 0.1) {
-                        items[i] = {
-                          ...item,
-                          price: newPrice,
-                          // Ürünün originalDimensions'ını güncelleme - bu kritik nokta
-                        };
-                        hasChanges = true;
-                      }
+                    // BOY ürünü silindiğinde EN ürünlerini güncelle
+                    if (isBoyItem && itemIsEn) {
+                      const productWidth = Number(productData.width || 0);
+                      // DÜZELTME: Reaktif dimensions yerine store'dan güncel değeri kullan
+                      const newPrice = actualHeight * productWidth * basePrice;
+
+                      console.log(
+                        `EN ürünü "${item.product}" BOY silindikten sonra güncelleniyor:`
+                      );
+                      console.log(
+                        `Eski fiyat: ${item.price}, Yeni fiyat: ${newPrice}`
+                      );
+                      console.log(
+                        `Hesaplama: ${actualHeight} x ${productWidth} x ${basePrice} = ${newPrice}`
+                      );
+
+                      return {
+                        ...item,
+                        price: newPrice,
+                      };
                     }
                   }
                 }
               }
-
-              return hasChanges ? items : prevItems;
+              return item;
             });
-          }, 300); // Boyut değişiminin tamamlanması için yeterli gecikme
 
-          return;
-        }
+            return updatedItems;
+          });
+
+          // 6. ORDERDETAILS İLE SENKRONİZASYON
+          setShouldRecalcPrices(true);
+
+          // İşlemi tamamla
+          setTimeout(() => {
+            setShouldRecalcPrices(false);
+            isUpdating.current = false;
+            console.log("İşlemler tamamlandı, flags sıfırlandı");
+          }, 300);
+        }, 300); // Boyut güncellemesinin tamamlanmasını bekle - süreyi artır
+
+        return;
       }
 
-      // Artis kategorisinde olmayan ürünler için normal silme işlemi
-      setSavedItems((prev) => prev.filter((_, i) => i !== index));
-
-      // Silinen öğenin ID'sini kaydet
-      if (!deletedItems.current.includes(itemId)) {
-        deletedItems.current.push(itemId);
-      }
+      // Artis olmayan ürünler için işlemi bitiriyoruz
+      isUpdating.current = false;
     },
     [
       savedItems,
-      dimensions,
       getCategoryData,
       getProductData,
+      dimensions,
       updateKontiDimensions,
       setSavedItems,
+      setShouldRecalcPrices,
     ]
   );
+
   // Ürün düzenle
   const handleEditItem = useCallback((item, index) => {
     setEditingItem(index);
