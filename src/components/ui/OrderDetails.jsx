@@ -372,12 +372,24 @@ const OrderDetails = ({
     });
   }, []);
 
-  // Konti boyutlarını isimden ayıklama yardımcı fonksiyonu
+  // parseKontiDimensions fonksiyonunu güncelle, satır ~384
   const parseKontiDimensions = useCallback((name) => {
-    const dimensions = name.split("x").map((n) => parseInt(n.trim()));
-    return dimensions.length === 2 ? dimensions : [0, 0];
-  }, []);
+    // 'x' karakterini ayırıcı olarak kullan - küçük harf veya büyük harf X olabilir
+    const parts = name.toLowerCase().split("x");
 
+    if (parts.length === 2) {
+      // parseFloat kullanarak ondalık sayıları destekle
+      const width = parseFloat(parts[0].trim());
+      const height = parseFloat(parts[1].trim());
+
+      // Geçerli sayılar ise değerleri döndür
+      if (!isNaN(width) && !isNaN(height)) {
+        return [width, height];
+      }
+    }
+
+    return [0, 0]; // Geçersiz format
+  }, []);
   // Ürün düzenlemeyi başlat
   const handleEdit = useCallback(
     (categoryName, productIndex, product) => {
@@ -388,6 +400,7 @@ const OrderDetails = ({
         name: product.name,
         price: product.price,
         custom: !product.productCollectionId,
+        showInput: false,
       });
 
       setEditingValues({
@@ -401,10 +414,12 @@ const OrderDetails = ({
   // Fiyat değişimi
   const handlePriceChange = useCallback(
     (e) => {
-      const newPrice = e.target.value;
+      const value = e.target.value;
+
+      // Matematiksel ifade olup olmadığına bakmaksızın değeri direkt olarak ayarla
       setEditingValues((prev) => ({
         ...prev,
-        price: newPrice,
+        price: value,
       }));
     },
     [setEditingValues]
@@ -437,12 +452,25 @@ const OrderDetails = ({
         const selectedProduct = JSON.parse(value);
 
         // Özel ürün seçimi
+        // handleProductSelect fonksiyonunda özel ürün seçiminde kategoriyi kontrol et
         if (selectedProduct.custom) {
-          setSelectedProduct(selectedProduct);
-          setEditingValues({
-            name: "",
-            price: "0",
+          setSelectedProduct({
+            ...selectedProduct,
+            showInput: true, // Yeni seçildiğinde input göster
           });
+
+          // Konti kategorisi için varsayılan format sağla
+          if (categoryName.toLowerCase() === "konti") {
+            setEditingValues({
+              name: ``, // Varsayılan format "0x0"
+              price: "0",
+            });
+          } else {
+            setEditingValues({
+              name: "", // Diğer kategoriler için boş alan
+              price: "0",
+            });
+          }
           return;
         }
 
@@ -683,25 +711,113 @@ const OrderDetails = ({
   );
 
   // Ürün düzenlemesini kaydet
+
   const handleSave = useCallback(
     (categoryName, productIndex) => {
+      let finalPrice = editingValues.price;
+
+      try {
+        if (
+          typeof editingValues.price === "string" &&
+          (editingValues.price.includes("*") ||
+            editingValues.price.includes("+") ||
+            editingValues.price.includes("-") ||
+            editingValues.price.includes("/"))
+        ) {
+          // Matematik ifadesini hesapla
+          const calculatedValue = new Function(
+            `return ${editingValues.price}`
+          )();
+
+          if (!isNaN(calculatedValue)) {
+            finalPrice = calculatedValue; // Negatif değerlere izin ver
+          }
+        } else {
+          // handleSave fonksiyonu içinde - satır ~853
+          finalPrice = parseFloat(editingValues.price) || 0; // Negatif değerlere izin ver
+        }
+      } catch (error) {
+        finalPrice = 0; // Hata durumunda 0 olarak ayarla
+      }
+      // Konti kategorisi için özel işleme
       if (categoryName.toLowerCase() === "konti" && selectedProduct?.custom) {
+        // Format kontrolü
+        const formatCheck =
+          /^\s*(\d+(?:[.,]\d+)?)\s*[xX]\s*(\d+(?:[.,]\d+)?)\s*$/.test(
+            editingValues.name
+          );
+
+        if (!formatCheck) {
+          alert("Lütfen geçerli bir format girin. Örnek: 100x200");
+          return;
+        }
+
         const [width, height] = parseKontiDimensions(editingValues.name);
-        setLocalOrderData((prev) => ({
-          ...prev,
-          kontiWidth: width,
-          kontiHeight: height,
-          [categoryName]: {
-            ...prev[categoryName],
-            [productIndex]: {
-              name: editingValues.name,
-              price: Number(editingValues.price),
-              productCollectionId: null,
-              width,
-              height,
-            },
-          },
-        }));
+        if (width > 0 && height > 0) {
+          // Boyutları güncelle
+          initializeDimensions({
+            kontiWidth: width,
+            kontiHeight: height,
+            anaWidth: width,
+            anaHeight: height,
+          });
+
+          // Sipariş verisini güncelle
+          setLocalOrderData((prev) => {
+            // Önceki veriyi kopyala
+            const newData = { ...prev };
+
+            // Boyutları güncelle
+            newData.dimensions = {
+              ...prev.dimensions,
+              kontiWidth: width,
+              kontiHeight: height,
+              anaWidth: width,
+              anaHeight: height,
+            };
+
+            // Konti verilerini güncelle
+            newData[categoryName] = {
+              ...prev[categoryName],
+              [productIndex]: {
+                name: editingValues.name,
+                price: finalPrice,
+                productCollectionId: null,
+                width,
+                height,
+              },
+            };
+
+            // Artis kategorilerini güncelle (varsa)
+            if (categories) {
+              Object.values(categories).forEach((cat) => {
+                // Kategori artis formatındaysa ve localOrderData'da mevcutsa işlem yap
+                if (
+                  cat?.priceFormat === "artis" &&
+                  cat?.propertyName &&
+                  prev[cat.propertyName] // Bu kontrol önemli - sadece halihazırda var olan kategoriler
+                ) {
+                  // Kategori verilerini "İstemiyorum" ile güncelle
+                  newData[cat.propertyName] = {
+                    0: {
+                      name: "İstemiyorum",
+                      price: 0,
+                      productCollectionId: "istemiyorum",
+                      width: 0,
+                      height: 0,
+                    },
+                  };
+                }
+              });
+            }
+
+            return newData;
+          });
+
+          // Fiyatları yeniden hesapla
+          setShouldRecalcPrices(true);
+          setTimeout(() => setShouldRecalcPrices(false), 300);
+        }
       } else {
         const currentProduct =
           localOrderData[categoryName]?.[productIndex] || {};
@@ -714,7 +830,7 @@ const OrderDetails = ({
               name: selectedProduct.custom
                 ? editingValues.name
                 : selectedProduct.name,
-              price: Number(editingValues.price),
+              price: finalPrice,
               productCollectionId: selectedProduct.custom
                 ? null
                 : selectedProduct.id,
@@ -734,8 +850,11 @@ const OrderDetails = ({
       localOrderData,
       parseKontiDimensions,
       setLocalOrderData,
+      initializeDimensions,
       setEditingItem,
       setSelectedProduct,
+      setShouldRecalcPrices,
+      categories,
     ]
   );
 
@@ -798,22 +917,19 @@ const OrderDetails = ({
           const updatedCategory = { ...newData[categoryName] };
           delete updatedCategory[productIndex];
 
-          const reindexed = {};
-          Object.values(updatedCategory).forEach((item, idx) => {
-            reindexed[idx] = item;
-          });
+          // Kategori tamamen boşaldıysa, tüm kategoriyi sil
+          if (Object.keys(updatedCategory).length === 0) {
+            delete newData[categoryName]; // Boş kategoriyi tamamen kaldır
+          } else {
+            // Kategori hala ürün içeriyorsa, kalan ürünleri yeniden indeksle
+            const reindexed = {};
+            Object.values(updatedCategory).forEach((item, idx) => {
+              reindexed[idx] = item;
+            });
+            newData[categoryName] = reindexed;
+          }
 
-          return {
-            ...newData,
-            dimensions: {
-              ...newData.dimensions,
-              kontiWidth: updatedWidth,
-              kontiHeight: updatedHeight,
-              anaWidth: updatedWidth,
-              anaHeight: updatedHeight,
-            },
-            [categoryName]: reindexed,
-          };
+          return newData;
         });
 
         // Boyutlar değiştiyse fiyatları yeniden hesapla
@@ -848,7 +964,16 @@ const OrderDetails = ({
       setShouldRecalcPrices,
     ]
   );
-
+  const handleKeyDown = useCallback(
+    (e, categoryName, productIndex) => {
+      // Enter tuşuna basıldığında ve shift tuşu basılı değilse kaydet
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault(); // Form gönderimini engelle
+        handleSave(categoryName, productIndex);
+      }
+    },
+    [handleSave]
+  );
   // JSX'de doğrudan sortedCategories'i kullan
   return (
     <div className="grid grid-cols-1 space-y-0.5">
@@ -883,63 +1008,131 @@ const OrderDetails = ({
                             {category?.title || categoryName}
                           </span>
                           <div className="relative">
-                            <select
-                              value={
-                                selectedProduct
-                                  ? JSON.stringify(selectedProduct)
-                                  : ""
-                              }
-                              onChange={(e) =>
-                                handleProductSelect(
-                                  e.target.value,
-                                  categoryName,
-                                  productIndex
-                                )
-                              }
-                              className="bg-gray-600/90 text-[0.75rem] text-gray-200 px-2 py-1.5 rounded border border-gray-500/40 focus:border-indigo-500/50 outline-none w-full transition-all duration-200"
-                              style={{ WebkitFontSmoothing: "antialiased" }}
-                            >
-                              {/* Önce mevcut seçili ürünü göster */}
-                              {selectedProduct && !selectedProduct.custom && (
-                                <option value={JSON.stringify(selectedProduct)}>
-                                  {selectedProduct.name} -{" "}
-                                  {Number(
-                                    selectedProduct.price
-                                  )?.toLocaleString("tr-TR")}
-                                  ₺
-                                </option>
-                              )}
-                              {/* Sonra diğer ürünleri göster */}
-                              {products[categoryName] &&
-                                sortProducts(products[categoryName])
-                                  .filter(
-                                    ([key]) => key !== selectedProduct?.id
-                                  ) // Seçili ürünü filtrele
-                                  .map(([key, product]) => (
-                                    <option
-                                      key={key}
-                                      value={JSON.stringify({
-                                        id: key,
-                                        name: product.title || product.name,
-                                        price: product.price,
-                                        custom: false,
-                                      })}
-                                    >
-                                      {product.title || product.name} -{" "}
-                                      {Number(product.price)?.toLocaleString(
-                                        "tr-TR"
-                                      )}
-                                      ₺
-                                    </option>
-                                  ))}
-                              <option value='{"custom":true}'>Diğer</option>
-                            </select>
+                            {selectedProduct &&
+                            selectedProduct.custom &&
+                            selectedProduct.showInput ? (
+                              // Diğer seçildiğinde text input göster
+                              categoryName.toLowerCase() === "konti" ? (
+                                <div className="relative">
+                                  <input
+                                    type="text"
+                                    value={editingValues.name}
+                                    onChange={(e) => {
+                                      // Herhangi bir girişe izin ver, validation sadece kaydetme sırasında yapılacak
+                                      const value = e.target.value;
+
+                                      // Hiçbir regex kontrolü olmadan input değerini kabul et
+                                      setEditingValues((prev) => ({
+                                        ...prev,
+                                        name: value,
+                                      }));
+                                    }}
+                                    onKeyDown={(e) =>
+                                      handleKeyDown(
+                                        e,
+                                        categoryName,
+                                        productIndex
+                                      )
+                                    }
+                                    placeholder="Genişlikxuzunluk (örn: 4x8)"
+                                    className="bg-gray-600/90 text-[0.75rem] text-gray-200 px-2 py-1.5 rounded border border-gray-500/40 focus:border-indigo-500/50 outline-none w-full transition-all duration-200"
+                                    style={{
+                                      WebkitFontSmoothing: "antialiased",
+                                    }}
+                                    autoFocus
+                                  />
+                                  <div className="mt-1 text-[0.7rem] text-blue-300">
+                                    Format: GenişlikxYükseklik (örn: 4x8 veya
+                                    4.5x8.5)
+                                  </div>
+                                </div>
+                              ) : (
+                                <input
+                                  type="text"
+                                  value={editingValues.name}
+                                  onChange={(e) =>
+                                    setEditingValues((prev) => ({
+                                      ...prev,
+                                      name: e.target.value,
+                                    }))
+                                  }
+                                  onKeyDown={(e) =>
+                                    handleKeyDown(e, categoryName, productIndex)
+                                  }
+                                  placeholder="Özel ürün adı giriniz"
+                                  className="bg-gray-600/90 text-[0.75rem] text-gray-200 px-2 py-1.5 rounded border border-gray-500/40 focus:border-indigo-500/50 outline-none w-full transition-all duration-200"
+                                  style={{ WebkitFontSmoothing: "antialiased" }}
+                                  autoFocus
+                                />
+                              )
+                            ) : (
+                              // Normal durumda select göster
+                              <select
+                                value={
+                                  selectedProduct
+                                    ? JSON.stringify(selectedProduct)
+                                    : ""
+                                }
+                                onChange={(e) =>
+                                  handleProductSelect(
+                                    e.target.value,
+                                    categoryName,
+                                    productIndex
+                                  )
+                                }
+                                className="bg-gray-600/90 text-[0.75rem] text-gray-200 px-2 py-1.5 rounded border border-gray-500/40 focus:border-indigo-500/50 outline-none w-full transition-all duration-200"
+                                style={{ WebkitFontSmoothing: "antialiased" }}
+                              >
+                                {/* Diğer seçeneğini en üste taşı */}
+                                <option value='{"custom":true}'>Diğer</option>
+
+                                {/* Önce mevcut seçili ürünü göster */}
+                                {selectedProduct && !selectedProduct.custom && (
+                                  <option
+                                    value={JSON.stringify(selectedProduct)}
+                                  >
+                                    {selectedProduct.name} -{" "}
+                                    {Number(
+                                      selectedProduct.price
+                                    )?.toLocaleString("tr-TR")}
+                                    ₺
+                                  </option>
+                                )}
+
+                                {/* Sonra diğer ürünleri göster */}
+                                {products[categoryName] &&
+                                  sortProducts(products[categoryName])
+                                    .filter(
+                                      ([key]) => key !== selectedProduct?.id
+                                    )
+                                    .map(([key, product]) => (
+                                      <option
+                                        key={key}
+                                        value={JSON.stringify({
+                                          id: key,
+                                          name: product.title || product.name,
+                                          price: product.price,
+                                          custom: false,
+                                        })}
+                                      >
+                                        {product.title || product.name} -{" "}
+                                        {Number(product.price)?.toLocaleString(
+                                          "tr-TR"
+                                        )}
+                                        ₺
+                                      </option>
+                                    ))}
+                              </select>
+                            )}
                           </div>
                           <input
-                            type="number"
+                            type="text"
                             value={editingValues.price}
                             onChange={(e) =>
                               handlePriceChange(e, categoryName, productIndex)
+                            }
+                            onKeyDown={(e) =>
+                              handleKeyDown(e, categoryName, productIndex)
                             }
                             className="bg-gray-600/90 text-[0.75rem] text-gray-200 px-2 py-1.5 rounded border border-gray-500/40 focus:border-green-500/50 outline-none w-full transition-all duration-200"
                             style={{ WebkitFontSmoothing: "antialiased" }}
@@ -991,8 +1184,13 @@ const OrderDetails = ({
                           >
                             {product.name}
                           </span>
+
                           <span
-                            className="text-green-400 text-[0.75rem] cursor-pointer hover:text-green-300 transition-colors duration-150"
+                            className={`text-[0.75rem] cursor-pointer transition-colors duration-150 ${
+                              Number(product.price) < 0
+                                ? "text-red-400 hover:text-red-300"
+                                : "text-green-400 hover:text-green-300"
+                            }`}
                             onClick={() =>
                               handlePriceClick(
                                 categoryName,
@@ -1005,7 +1203,11 @@ const OrderDetails = ({
                               WebkitFontSmoothing: "antialiased",
                             }}
                           >
-                            {Number(product.price)?.toLocaleString("tr-TR")}₺
+                            {Number(product.price) < 0 ? "-" : ""}
+                            {Math.abs(Number(product.price))?.toLocaleString(
+                              "tr-TR"
+                            )}
+                            ₺
                           </span>
                           <div className="flex gap-1">
                             <button

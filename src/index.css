@@ -1,74 +1,103 @@
+/* Tailwind Direktifleri */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+/* Temel Stiller */
+@layer base {
+    html {
+        scroll-behavior: smooth;
+    }
 
-html,
-body {
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
-    text-rendering: optimizeLegibility;
+    html,
+    body,
+    #root {
+        min-height: 100vh;
+        height: 100%;
+        margin: 0;
+        padding: 0;
+        @apply bg-gradient-to-b from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800;
+    }
+
+    body {
+        overflow-x: hidden;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+        text-rendering: optimizeLegibility;
+    }
 }
 
-.scroll-smooth {
-    scroll-behavior: smooth;
+/* Özel Bileşen Stilleri */
+@layer components {
+
+    /* Modern Scrollbar Stilleri */
+    .hover-scrollbar::-webkit-scrollbar {
+        width: 6px;
+        height: 6px;
+    }
+
+    .hover-scrollbar::-webkit-scrollbar-track {
+        background: transparent;
+        border-radius: 8px;
+        margin: 2px;
+    }
+
+    .hover-scrollbar::-webkit-scrollbar-thumb {
+        background: rgba(99, 102, 241, 0.2);
+        border-radius: 8px;
+        transition: all 0.2s ease;
+        opacity: 0.5;
+    }
+
+    .hover-scrollbar::-webkit-scrollbar-thumb:hover {
+        background: rgba(99, 102, 241, 0.6);
+    }
+
+    .hover-scrollbar:hover::-webkit-scrollbar-thumb {
+        opacity: 1;
+    }
+
+    /* Standart Custom Scrollbar */
+    .custom-scrollbar::-webkit-scrollbar {
+        width: 6px;
+        height: 6px;
+    }
+
+    .custom-scrollbar::-webkit-scrollbar-track {
+        background: rgba(30, 41, 59, 0.8);
+        border-radius: 3px;
+    }
+
+    .custom-scrollbar::-webkit-scrollbar-thumb {
+        background: rgba(71, 85, 105, 0.8);
+        border-radius: 3px;
+        transition: all 0.2s ease;
+    }
+
+    .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+        background: rgba(99, 112, 131, 0.8);
+    }
+
+    /* Firefox scrollbar styling */
+    .custom-scrollbar {
+        scrollbar-width: thin;
+        scrollbar-color: rgba(71, 85, 105, 0.8) rgba(30, 41, 59, 0.8);
+    }
 }
 
-/* Modern Scrollbar Stilleri */
-.hover-scrollbar::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
+/* Dark mode kontrolü */
+@media (prefers-color-scheme: dark) {
+
+    html,
+    body,
+    #root {
+        @apply from-gray-900 to-gray-800;
+    }
 }
 
-.hover-scrollbar::-webkit-scrollbar-track {
-    background: transparent;
-    border-radius: 8px;
-    margin: 2px;
-}
-
-.hover-scrollbar::-webkit-scrollbar-thumb {
-    background: rgba(99, 102, 241, 0.2);
-    border-radius: 8px;
-    transition: all 0.2s ease;
-}
-
-.hover-scrollbar::-webkit-scrollbar-thumb:hover {
-    background: rgba(99, 102, 241, 0.6);
-}
-
-/* Varsayılan olarak scrollbar'ı hafif saydamlaştır */
-.hover-scrollbar::-webkit-scrollbar-thumb {
-    opacity: 0.5;
-}
-
-/* Hover durumunda tam opaklık */
-.hover-scrollbar:hover::-webkit-scrollbar-thumb {
-    opacity: 1;
-}
-
-/* Scrollbar Styling */
-.custom-scrollbar::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
-}
-
-.custom-scrollbar::-webkit-scrollbar-track {
-    background: rgba(30, 41, 59, 0.8);
-    border-radius: 3px;
-}
-
-.custom-scrollbar::-webkit-scrollbar-thumb {
-    background: rgba(71, 85, 105, 0.8);
-    border-radius: 3px;
-    transition: all 0.2s ease;
-}
-
-.custom-scrollbar::-webkit-scrollbar-thumb:hover {
-    background: rgba(99, 112, 131, 0.8);
-}
-
-/* Firefox scrollbar styling */
-.custom-scrollbar {
-    scrollbar-width: thin;
-    scrollbar-color: rgba(71, 85, 105, 0.8) rgba(30, 41, 59, 0.8);
+/* Erişilebilirlik için */
+@media (prefers-reduced-motion: reduce) {
+    html {
+        scroll-behavior: auto;
+    }
 }

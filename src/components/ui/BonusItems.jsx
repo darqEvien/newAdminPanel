@@ -6,6 +6,7 @@ import { useDimensionsStore } from "../../store/dimensionsStore";
 const BonusItems = ({
   categories,
   products,
+  localOrderData = {},
   savedItems,
   setSavedItems,
   shouldRecalc = false,
@@ -37,6 +38,9 @@ const BonusItems = ({
     price: "",
     custom: false,
     name: "",
+    showInput: false, // Ürün seçiminde input gösterme kontrolü
+    customCategory: false, // Kategori özel seçim kontrolü
+    categoryName: "", // Özel kategori adı
   });
 
   // Referanslar
@@ -381,11 +385,34 @@ const BonusItems = ({
   const handleAddItem = useCallback(() => {
     // Doğrulama kontrolü
     if (
-      (newItem.custom && !newItem.name) ||
-      !newItem.category ||
-      (!newItem.price && newItem.price !== 0)
+      (newItem.customCategory && !newItem.categoryName) || // Özel kategori ama isim yok
+      (!newItem.customCategory && !newItem.category) || // Özel değil ama kategori seçilmemiş
+      (newItem.custom && !newItem.name) || // Özel ürün ama isim yok
+      (!newItem.price && newItem.price !== 0) // Fiyat yok
     ) {
       return; // Validasyon başarısız
+    }
+    let finalPrice = newItem.price;
+    // handleAddItem fonksiyonunda değişiklik yap - yaklaşık 411. satır
+    try {
+      if (
+        typeof newItem.price === "string" &&
+        (newItem.price.includes("*") ||
+          newItem.price.includes("+") ||
+          newItem.price.includes("-") ||
+          newItem.price.includes("/"))
+      ) {
+        // Matematik ifadesini hesapla
+        const calculatedValue = new Function(`return ${newItem.price}`)();
+
+        if (!isNaN(calculatedValue)) {
+          finalPrice = calculatedValue; // Negatif olmasına izin ver (Math.max(0, ...) kaldırıldı)
+        }
+      } else {
+        finalPrice = parseFloat(newItem.price) || 0; // Burada da Math.max(0, ...) kaldırıldı
+      }
+    } catch (error) {
+      finalPrice = 0; // Hata durumunda 0 olarak ayarla
     }
 
     // Ekleme öncesi mevcut boyutları kaydet
@@ -396,11 +423,18 @@ const BonusItems = ({
 
     const itemToAdd = {
       id: Date.now().toString(),
-      category: newItem.category,
-      product: newItem.custom ? newItem.name : newItem.product,
-      productId: newItem.custom ? null : newItem.productId,
-      price: Number(newItem.price),
-      custom: newItem.custom,
+      category: newItem.customCategory
+        ? newItem.categoryName
+        : newItem.category,
+      product:
+        newItem.custom || newItem.customCategory
+          ? newItem.name
+          : newItem.product,
+      productId:
+        newItem.custom || newItem.customCategory ? null : newItem.productId,
+      price: Number(finalPrice),
+      custom: newItem.custom || newItem.customCategory, // Özel kategori veya özel ürün ise true
+      customCategory: newItem.customCategory, // Özel kategori bilgisini de sakla
       originalDimensions: currentDimensions, // Ekleme anındaki boyutları sakla
       addedAt: Date.now(), // Sıralama için ekleme zamanı
     };
@@ -430,6 +464,9 @@ const BonusItems = ({
       price: "",
       custom: false,
       name: "",
+      showInput: false,
+      customCategory: false,
+      categoryName: "",
     });
     setAdding(false);
   }, [
@@ -601,16 +638,27 @@ const BonusItems = ({
     ]
   );
 
-  // Ürün düzenle
+  // Ürün düzenle fonksiyonunu güncelle
   const handleEditItem = useCallback((item, index) => {
     setEditingItem(index);
+
+    // Özel kategori veya özel ürün olsa bile dropdown menüleri göster
     setNewItem({
-      category: item.category,
+      // Özel kategori olsa bile kategori seçimine izin ver
+      category: item.category, // Önceden: item.customCategory ? "" : item.category,
       product: item.product,
       productId: item.productId,
       price: item.price.toString(),
-      custom: item.custom,
-      name: item.custom ? item.product : "",
+      // Özel ürün/kategori bilgisini ilk başta false yap, kullanıcı yeniden seçebilsin
+      custom: false, // Önceden: item.custom || item.customCategory
+      name: item.product,
+      // Özel input alanlarını ilk başta gösterme
+      showInput: false, // Önceden: item.custom || item.customCategory
+      customCategory: false, // Önceden: !!item.customCategory
+      categoryName: item.customCategory ? item.category : "",
+      // Orijinal değerleri sakla
+      originalCustomCategory: !!item.customCategory,
+      originalCustom: !!item.custom,
     });
   }, []);
 
@@ -620,13 +668,34 @@ const BonusItems = ({
 
     // Doğrulama kontrolü
     if (
+      (newItem.customCategory && !newItem.categoryName) ||
+      (!newItem.customCategory && !newItem.category) ||
       (newItem.custom && !newItem.name) ||
-      !newItem.category ||
       (!newItem.price && newItem.price !== 0)
     ) {
-      return; // Validasyon başarısız
+      return;
     }
+    let finalPrice = newItem.price;
+    try {
+      if (
+        typeof newItem.price === "string" &&
+        (newItem.price.includes("*") ||
+          newItem.price.includes("+") ||
+          newItem.price.includes("-") ||
+          newItem.price.includes("/"))
+      ) {
+        // Matematik ifadesini hesapla
+        const calculatedValue = new Function(`return ${newItem.price}`)();
 
+        if (!isNaN(calculatedValue)) {
+          finalPrice = calculatedValue; // Negatif değere izin ver
+        }
+      } else {
+        finalPrice = parseFloat(newItem.price) || 0; // Negatif değerlere izin ver
+      }
+    } catch (error) {
+      finalPrice = 0; // Hata durumunda 0 olarak ayarla
+    }
     // Orijinal öğeyi al
     const originalItem = savedItems[editingItem];
 
@@ -637,11 +706,18 @@ const BonusItems = ({
     // Güncellenmiş öğeyi oluştur - originalDimensions'ı koru
     const updatedItem = {
       ...originalItem,
-      category: newItem.category,
-      product: newItem.custom ? newItem.name : newItem.product,
-      productId: newItem.custom ? null : newItem.productId,
-      price: Number(newItem.price),
-      custom: newItem.custom,
+      category: newItem.customCategory
+        ? newItem.categoryName
+        : newItem.category,
+      product:
+        newItem.custom || newItem.customCategory
+          ? newItem.name
+          : newItem.product,
+      productId:
+        newItem.custom || newItem.customCategory ? null : newItem.productId,
+      price: Number(finalPrice),
+      custom: newItem.custom || newItem.customCategory,
+      customCategory: newItem.customCategory,
     };
 
     // Artis kategorilerinde boyut değişimlerini uygula
@@ -710,14 +786,44 @@ const BonusItems = ({
 
   // Kategori değişimi
   const handleCategoryChange = useCallback((e) => {
-    const categoryName = e.target.value;
+    const value = e.target.value;
+
+    // Diğer seçeneği için
+    if (value === "custom") {
+      setNewItem((prev) => ({
+        ...prev,
+        category: "", // Kategoriyi temizle
+        customCategory: true,
+        categoryName: "",
+        product: "",
+        productId: "",
+        price: "0", // Fiyatı sıfırla
+        name: "",
+        showInput: true, // Ürün input alanını göster
+        custom: true, // Özel ürün olarak işaretle
+      }));
+      return;
+    }
+
+    // Normal kategori seçildiğinde
     setNewItem((prev) => ({
       ...prev,
-      category: categoryName,
+      category: value,
+      customCategory: false,
+      categoryName: "",
       product: "",
       productId: "",
-      price: "",
+      price: "0", // Fiyatı sıfırla
       name: "",
+      showInput: false,
+      custom: false,
+    }));
+  }, []);
+  // Özel kategori adı değişimi için
+  const handleCategoryNameChange = useCallback((e) => {
+    setNewItem((prev) => ({
+      ...prev,
+      categoryName: e.target.value,
     }));
   }, []);
 
@@ -734,6 +840,7 @@ const BonusItems = ({
           price: "",
           custom: true,
           name: "",
+          showInput: true, // Input göster
         }));
         return;
       }
@@ -746,6 +853,7 @@ const BonusItems = ({
           price: "",
           custom: false,
           name: "",
+          showInput: false, // Input gizle
         }));
         return;
       }
@@ -830,9 +938,12 @@ const BonusItems = ({
 
   // Fiyat değişimi
   const handlePriceChange = useCallback((e) => {
+    const value = e.target.value;
+
+    // Değeri direkt olarak kaydet, hesaplama kaydetme esnasında yapılacak
     setNewItem((prev) => ({
       ...prev,
-      price: e.target.value,
+      price: value,
     }));
   }, []);
 
@@ -846,13 +957,26 @@ const BonusItems = ({
 
   // Kategoriler için dropdown seçenekleri
   const categoryOptions = useMemo(() => {
-    return Object.values(categories)
+    const availableCategories = Object.values(categories)
+      .filter((category) => {
+        // Zaten localOrderData'da varsa filtreleme
+        const categoryName = category.propertyName;
+        const shouldExclude =
+          localOrderData[categoryName] || // Normal kategoriler
+          (categoryName.toLowerCase() === "konti" && localOrderData["konti"]) || // Konti
+          (categoryName.toLowerCase().includes("en") && localOrderData["en"]) || // En kategorileri
+          (categoryName.toLowerCase().includes("boy") && localOrderData["boy"]); // Boy kategorileri
+
+        return !shouldExclude;
+      })
       .sort((a, b) => (a.order || 999) - (b.order || 999))
       .map((category) => ({
         value: category.propertyName,
         label: category.title || category.propertyName,
       }));
-  }, [categories]);
+
+    return availableCategories;
+  }, [categories, localOrderData]);
 
   // Seçili kategoriye göre ürün seçenekleri
   const productOptions = useMemo(() => {
@@ -925,7 +1049,20 @@ const BonusItems = ({
     recalculateAllDynamicPrices,
     resetRecalculationFlag,
   ]);
+  const handleKeyDown = useCallback(
+    (e) => {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
 
+        if (editingItem !== null) {
+          handleSaveEdit();
+        } else if (adding) {
+          handleAddItem();
+        }
+      }
+    },
+    [editingItem, adding, handleSaveEdit, handleAddItem]
+  );
   return (
     <div className="space-y-3">
       {/* Öğe Listesi */}
@@ -941,31 +1078,51 @@ const BonusItems = ({
                   <div className="grid grid-cols-[2fr,2fr,1fr,auto] items-center px-2 py-1.5 gap-1">
                     {editingItem === index ? (
                       <>
+                        {/* İlk sütun - Kategori */}
                         <div>
-                          <select
-                            value={newItem.category}
-                            onChange={handleCategoryChange}
-                            className="bg-gray-600/90 text-[0.75rem] text-gray-200 px-2 py-1.5 rounded border border-gray-500/40 focus:border-indigo-500/50 outline-none w-full transition-all duration-200"
-                            style={{ WebkitFontSmoothing: "antialiased" }}
-                          >
-                            <option value="">Kategori Seçin</option>
-                            {categoryOptions.map((option) => (
-                              <option key={option.value} value={option.value}>
-                                {option.label}
-                              </option>
-                            ))}
-                          </select>
+                          {newItem.customCategory ? (
+                            <input
+                              type="text"
+                              value={newItem.categoryName}
+                              onChange={handleCategoryNameChange}
+                              onKeyDown={handleKeyDown}
+                              placeholder="Özel kategori adı"
+                              className="bg-gray-600/90 text-[0.75rem] text-gray-200 px-2 py-1.5 rounded border border-gray-500/40 focus:border-indigo-500/50 outline-none w-full transition-all duration-200"
+                              style={{ WebkitFontSmoothing: "antialiased" }}
+                              autoFocus
+                            />
+                          ) : (
+                            <select
+                              value={newItem.category}
+                              onChange={handleCategoryChange}
+                              onKeyDown={handleKeyDown}
+                              className="bg-gray-600/90 text-[0.75rem] text-gray-200 px-2 py-1.5 rounded border border-gray-500/40 focus:border-indigo-500/50 outline-none w-full transition-all duration-200"
+                              style={{ WebkitFontSmoothing: "antialiased" }}
+                            >
+                              <option value="">Kategori Seçin</option>
+                              <option value="custom">Diğer</option>
+                              {categoryOptions.map((option) => (
+                                <option key={option.value} value={option.value}>
+                                  {option.label}
+                                </option>
+                              ))}
+                            </select>
+                          )}
                         </div>
 
+                        {/* İkinci sütun - Ürün */}
                         <div>
-                          {newItem.custom ? (
+                          {newItem.customCategory ||
+                          (newItem.custom && newItem.showInput) ? (
                             <input
                               type="text"
                               value={newItem.name}
                               onChange={handleNameChange}
-                              placeholder="Ürün adı"
+                              onKeyDown={handleKeyDown}
+                              placeholder="Özel ürün adı"
                               className="bg-gray-600/90 text-[0.75rem] text-gray-200 px-2 py-1.5 rounded border border-gray-500/40 focus:border-indigo-500/50 outline-none w-full transition-all duration-200"
                               style={{ WebkitFontSmoothing: "antialiased" }}
+                              autoFocus={!newItem.customCategory}
                             />
                           ) : (
                             <select
@@ -976,13 +1133,18 @@ const BonusItems = ({
                                       name: newItem.product,
                                       price: newItem.price,
                                     })
+                                  : newItem.custom
+                                  ? "custom"
                                   : ""
                               }
                               onChange={handleProductChange}
-                              className="bg-gray-600/90 text-[0.75rem] text-gray-200 px-2 py-1.5 rounded border border-gray-500/40 focus:border-indigo-500/50 outline-none w-full transition-all duration-200"
+                              onKeyDown={handleKeyDown}
+                              disabled={!newItem.category}
+                              className="bg-gray-600/90 text-[0.75rem] text-gray-200 px-2 py-1.5 rounded border border-gray-500/40 focus:border-indigo-500/50 outline-none w-full transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
                               style={{ WebkitFontSmoothing: "antialiased" }}
                             >
                               <option value="">Ürün Seçin</option>
+                              <option value="custom">Diğer</option>
                               {productOptions.map((product) => (
                                 <option
                                   key={product.id}
@@ -999,20 +1161,22 @@ const BonusItems = ({
                                   ₺
                                 </option>
                               ))}
-                              <option value="custom">Diğer</option>
                             </select>
                           )}
                         </div>
 
+                        {/* Üçüncü sütun - Fiyat */}
                         <input
-                          type="number"
+                          type="text"
                           value={newItem.price}
                           onChange={handlePriceChange}
+                          onKeyDown={handleKeyDown}
                           placeholder="Fiyat"
                           className="bg-gray-600/90 text-[0.75rem] text-gray-200 px-2 py-1.5 rounded border border-gray-500/40 focus:border-green-500/50 outline-none w-full transition-all duration-200"
                           style={{ WebkitFontSmoothing: "antialiased" }}
                         />
 
+                        {/* Dördüncü sütun - Butonlar */}
                         <div className="flex gap-1">
                           <button
                             onClick={handleSaveEdit}
@@ -1059,7 +1223,8 @@ const BonusItems = ({
                     ) : (
                       <>
                         <span
-                          className="text-gray-400 text-[0.75rem] truncate"
+                          className="text-gray-400 text-[0.75rem] truncate cursor-pointer hover:text-indigo-300 transition-colors duration-150" // cursor-pointer ve hover eklendi
+                          onClick={() => handleEditItem(item, index)} // onClick eklendi
                           style={{
                             textRendering: "optimizeLegibility",
                             WebkitFontSmoothing: "antialiased",
@@ -1080,14 +1245,20 @@ const BonusItems = ({
                           {item.product}
                         </span>
                         <span
-                          className="text-green-400 text-[0.75rem] cursor-pointer hover:text-green-300 transition-colors duration-150"
+                          className={`${
+                            item.price < 0
+                              ? "text-red-400 hover:text-red-300"
+                              : "text-green-400 hover:text-green-300"
+                          } text-[0.75rem] cursor-pointer transition-colors duration-150`}
                           onClick={() => handleEditItem(item, index)}
                           style={{
                             textRendering: "optimizeLegibility",
                             WebkitFontSmoothing: "antialiased",
                           }}
                         >
-                          {Number(item.price)?.toLocaleString("tr-TR")}₺
+                          {item.price < 0 ? "-" : ""}
+                          {Math.abs(Number(item.price)).toLocaleString("tr-TR")}
+                          ₺
                         </span>
                         <div className="flex gap-1">
                           <button
@@ -1125,31 +1296,50 @@ const BonusItems = ({
       {adding ? (
         <div className="bg-gray-800/30 rounded p-3 border border-gray-700/30">
           <div className="grid grid-cols-[2fr,2fr,1fr,auto] items-center gap-2">
+            {/* Kategori seçimi */}
             <div>
-              <select
-                value={newItem.category}
-                onChange={handleCategoryChange}
-                className="bg-gray-600/90 text-[0.75rem] text-gray-200 px-2 py-1.5 rounded border border-gray-500/40 focus:border-indigo-500/50 outline-none w-full transition-all duration-200"
-                style={{ WebkitFontSmoothing: "antialiased" }}
-              >
-                <option value="">Kategori Seçin</option>
-                {categoryOptions.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
+              {newItem.customCategory ? (
+                <input
+                  type="text"
+                  value={newItem.categoryName}
+                  onChange={handleCategoryNameChange}
+                  onKeyDown={handleKeyDown}
+                  placeholder="Özel kategori adı giriniz"
+                  className="bg-gray-600/90 text-[0.75rem] text-gray-200 px-2 py-1.5 rounded border border-gray-500/40 focus:border-indigo-500/50 outline-none w-full transition-all duration-200"
+                  style={{ WebkitFontSmoothing: "antialiased" }}
+                  autoFocus
+                />
+              ) : (
+                <select
+                  value={newItem.category}
+                  onChange={handleCategoryChange}
+                  className="bg-gray-600/90 text-[0.75rem] text-gray-200 px-2 py-1.5 rounded border border-gray-500/40 focus:border-indigo-500/50 outline-none w-full transition-all duration-200"
+                  style={{ WebkitFontSmoothing: "antialiased" }}
+                >
+                  <option value="">Kategori Seçin</option>
+                  <option value="custom">Diğer</option>
+                  {categoryOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              )}
             </div>
 
+            {/* Ürün seçimi */}
             <div>
-              {newItem.custom ? (
+              {(newItem.custom && newItem.showInput) ||
+              newItem.customCategory ? (
                 <input
                   type="text"
                   value={newItem.name}
                   onChange={handleNameChange}
-                  placeholder="Ürün adı"
+                  onKeyDown={handleKeyDown}
+                  placeholder="Özel ürün adı giriniz"
                   className="bg-gray-600/90 text-[0.75rem] text-gray-200 px-2 py-1.5 rounded border border-gray-500/40 focus:border-indigo-500/50 outline-none w-full transition-all duration-200"
                   style={{ WebkitFontSmoothing: "antialiased" }}
+                  autoFocus={newItem.customCategory ? false : true}
                 />
               ) : (
                 <select
@@ -1160,43 +1350,63 @@ const BonusItems = ({
                           name: newItem.product,
                           price: newItem.price,
                         })
+                      : newItem.custom
+                      ? "custom"
                       : ""
                   }
                   onChange={handleProductChange}
+                  onKeyDown={handleKeyDown}
                   disabled={!newItem.category}
                   className="bg-gray-600/90 text-[0.75rem] text-gray-200 px-2 py-1.5 rounded border border-gray-500/40 focus:border-indigo-500/50 outline-none w-full transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
                   style={{ WebkitFontSmoothing: "antialiased" }}
                 >
                   <option value="">Ürün Seçin</option>
-                  {productOptions.map((product) => (
+                  <option value="custom">Diğer</option>
+                  {newItem.productId && !newItem.custom && (
                     <option
-                      key={product.id}
                       value={JSON.stringify({
-                        id: product.id,
-                        name: product.name,
-                        price: product.price,
+                        id: newItem.productId,
+                        name: newItem.product,
+                        price: newItem.price,
                       })}
                     >
-                      {product.name} -{" "}
-                      {Number(product.price).toLocaleString("tr-TR")}₺
+                      {newItem.product} -{" "}
+                      {Number(newItem.price).toLocaleString("tr-TR")}₺
                     </option>
-                  ))}
-                  <option value="custom">Diğer</option>
+                  )}
+                  {productOptions
+                    .filter((product) => product.id !== newItem.productId)
+                    .map((product) => (
+                      <option
+                        key={product.id}
+                        value={JSON.stringify({
+                          id: product.id,
+                          name: product.name,
+                          price: product.price,
+                        })}
+                      >
+                        {product.name} -{" "}
+                        {Number(product.price).toLocaleString("tr-TR")}₺
+                      </option>
+                    ))}
                 </select>
               )}
             </div>
 
+            {/* Fiyat girişi */}
             <div>
               <input
-                type="number"
+                type="text"
                 value={newItem.price}
                 onChange={handlePriceChange}
+                onKeyDown={handleKeyDown}
                 placeholder="Fiyat"
                 className="bg-gray-600/90 text-[0.75rem] text-gray-200 px-2 py-1.5 rounded border border-gray-500/40 focus:border-green-500/50 outline-none w-full transition-all duration-200"
                 style={{ WebkitFontSmoothing: "antialiased" }}
               />
             </div>
 
+            {/* İşlem butonları */}
             <div className="flex gap-1">
               <button
                 onClick={handleAddItem}
@@ -1303,6 +1513,7 @@ const BonusItems = ({
 BonusItems.propTypes = {
   categories: PropTypes.object.isRequired,
   products: PropTypes.object.isRequired,
+  localOrderData: PropTypes.object.isRequired,
   savedItems: PropTypes.array.isRequired,
   setSavedItems: PropTypes.func.isRequired,
   shouldRecalc: PropTypes.bool,

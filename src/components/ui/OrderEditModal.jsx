@@ -618,6 +618,7 @@ const OrderEditModal = ({
                         <BonusItems
                           categories={categories}
                           products={products}
+                          localOrderData={localOrderData} // Bu prop'u geçin
                           savedItems={savedItems}
                           setSavedItems={setSavedItems}
                           shouldRecalc={shouldRecalcPrices}
