@@ -46,7 +46,12 @@ const OrderEditModal = ({
   // İlk yükleme için hesaplama atlama bayrağı ekleniyor
   const [skipInitialCalc, setSkipInitialCalc] = useState(true);
   const [activePanel, setActivePanel] = useState("notes"); // 'notes' veya 'changelog'
-
+  // Müşteri düzenleme state'leri
+  const [isEditingCustomer, setIsEditingCustomer] = useState(false);
+  const [editedCustomerData, setEditedCustomerData] = useState({});
+  // Ana state'ler kısmına ekleyelim
+  const [localCustomer, setLocalCustomer] = useState(customer); // Yerel müşteri verisi
+  const [customerChanges, setCustomerChanges] = useState({}); // Müşteri değişikliklerini takip etmek için
   // OrderDetails state'leri
   const [editingItem, setEditingItem] = useState(null);
   const [selectedProduct, setSelectedProduct] = useState(null);
@@ -69,6 +74,7 @@ const OrderEditModal = ({
   }, [isOpen, orderData]);
   // originalBonusItems'ı doğru şekilde kullanmak için computeChanges fonksiyonunu düzeltelim
 
+  // computeChanges fonksiyonuna müşteri değişikliklerini ekleyelim
   const computeChanges = useCallback(() => {
     if (!originalOrderData || !localOrderData) {
       console.log("originalOrderData veya localOrderData eksik");
@@ -94,30 +100,40 @@ const OrderEditModal = ({
       // Güncel bonus öğelerini ekle
       localClone.bonus = savedItems || [];
 
-      console.log("Değişiklikler hesaplanıyor:", {
-        original: {
-          ...originalClone,
-          bonus: originalClone.bonus.map((item) => ({
-            product: item.product,
-            price: item.price,
-          })),
-        },
-        updated: {
-          ...localClone,
-          bonus: localClone.bonus.map((item) => ({
-            product: item.product,
-            price: item.price,
-          })),
-        },
-      });
+      // Ürünlerdeki değişiklikleri hesapla
+      const productChanges = trackOrderChanges(
+        originalClone,
+        localClone,
+        categories
+      );
 
-      return trackOrderChanges(originalClone, localClone, categories);
+      // Müşteri değişikliklerini kontrol et
+      const customerFieldChanges = [];
+
+      if (Object.keys(customerChanges).length > 0) {
+        // Değişen müşteri alanlarını belirle
+        Object.keys(customerChanges).forEach((key) => {
+          customerFieldChanges.push({
+            field: key,
+            oldValue: customer[key] || "",
+            newValue: customerChanges[key] || "",
+          });
+        });
+      }
+
+      // Değişiklikleri birleştir
+      return {
+        ...productChanges,
+        customerChanges: customerFieldChanges,
+        hasCustomerChanges: customerFieldChanges.length > 0,
+      };
     } catch (error) {
       console.error("Değişiklik hesaplama hatası:", error);
       return {
         addedProducts: [],
         removedProducts: [],
         priceChanges: [],
+        customerChanges: [],
         error: error.message,
       };
     }
@@ -128,6 +144,8 @@ const OrderEditModal = ({
     savedItems,
     originalBonusItems,
     initialDimensions,
+    customerChanges,
+    customer,
   ]);
   // İlk veri yüklemesi
   useEffect(() => {
@@ -263,7 +281,42 @@ const OrderEditModal = ({
   }, [kontiWidth, kontiHeight, isOpen, skipInitialCalc]);
 
   // DEBUG: OrderDetails ve BonusItems arasındaki senkronizasyonu kontrol et
+  const saveCustomerChanges = () => {
+    try {
+      // Değişmiş alanları tespit edip güncelleme
+      const customerUpdates = {};
 
+      // Sadece değişen alanları güncelle
+      Object.keys(editedCustomerData).forEach((key) => {
+        if (editedCustomerData[key] !== customer[key]) {
+          customerUpdates[key] = editedCustomerData[key];
+        }
+      });
+
+      // Değişiklik yoksa işlemi sonlandır
+      if (Object.keys(customerUpdates).length === 0) {
+        setIsEditingCustomer(false);
+        return;
+      }
+
+      // Yerel müşteri verisini güncelle
+      setLocalCustomer({
+        ...customer,
+        ...customerUpdates,
+      });
+
+      // Değişiklikleri takip etmek için bir state tutuyoruz
+      setCustomerChanges(customerUpdates);
+
+      toast.success(
+        "Müşteri bilgileri değiştirildi (Kaydetmek için Sipariş Kaydet butonunu kullanın)"
+      );
+      setIsEditingCustomer(false);
+    } catch (error) {
+      console.error("Müşteri bilgileri güncellenirken hata:", error);
+      toast.error("Müşteri bilgileri güncellenirken bir hata oluştu");
+    }
+  };
   // Fiyatları yenileme fonksiyonu
   const handleRefreshPrices = async () => {
     try {
@@ -530,6 +583,7 @@ const OrderEditModal = ({
         toast.error("Müşteri bilgileri eksik, lütfen sayfayı yenileyin.");
         return;
       }
+
       // Calculate current dimensions and total price
       const currentDimensions = getAllDimensions();
       const { dimensions, ...productsData } = localOrderData;
@@ -538,7 +592,6 @@ const OrderEditModal = ({
       let totalPrice = calculateTotalPrice(productsData, savedItems);
 
       // CRITICAL FIX: Make sure we're using the correct customer ID
-      // For main orders, customerId should be derived from customer.id
       const targetCustomerId = isMainOrder ? customer.id : customerId;
 
       console.log("Customer info:", {
@@ -552,12 +605,26 @@ const OrderEditModal = ({
       // Create updates object
       const updates = {};
 
+      // Müşteri değişikliklerini ekleyelim (eğer varsa), ama sadece değişen alanları güncelle
+      if (Object.keys(customerChanges).length > 0) {
+        // Örnek: Eğer sadece fullName değişmişse, sadece onu güncelle
+        // Tüm müşteri nesnesini güncellemekten kaçın
+        Object.keys(customerChanges).forEach((key) => {
+          updates[`customers/${targetCustomerId}/${key}`] =
+            customerChanges[key];
+        });
+
+        // Güncellenme zamanını da ekle
+        updates[`customers/${targetCustomerId}/lastUpdated`] = Date.now();
+      }
+
       // Değişiklik varsa changelog'ı da kaydet
       const changes = computeChanges();
       const hasSignificantChanges =
         (changes.addedProducts && changes.addedProducts.length > 0) ||
         (changes.removedProducts && changes.removedProducts.length > 0) ||
         (changes.priceChanges && changes.priceChanges.length > 0) ||
+        changes.hasCustomerChanges ||
         changes.dimensionsChange ||
         changes.priceChange;
 
@@ -615,20 +682,14 @@ const OrderEditModal = ({
         }
       }
 
+      // Sipariş güncellemelerini ekle
       if (isMainOrder) {
-        // Main order updates - use customer.id as the path
         updates[`customers/${targetCustomerId}/products/0`] = productsData;
         updates[`customers/${targetCustomerId}/dimensions`] = currentDimensions;
         updates[`customers/${targetCustomerId}/bonus`] = savedItems;
         updates[`customers/${targetCustomerId}/totalPrice`] = totalPrice;
         updates[`customers/${targetCustomerId}/notes`] = notes;
-
-        console.log(
-          "Ana sipariş güncellemesi için path:",
-          `customers/${targetCustomerId}`
-        );
       } else {
-        // Other orders - use customerId as the parent path and orderKey to identify the specific order
         updates[
           `customers/${targetCustomerId}/otherOrders/${orderKey}/products`
         ] = productsData;
@@ -642,22 +703,17 @@ const OrderEditModal = ({
         ] = totalPrice;
         updates[`customers/${targetCustomerId}/otherOrders/${orderKey}/notes`] =
           notes;
-
-        console.log(
-          "Diğer sipariş güncellemesi için path:",
-          `customers/${targetCustomerId}/otherOrders/${orderKey}`
-        );
       }
-
-      // Add debug logging
-      console.log("Toplam fiyat:", totalPrice);
-      console.log("Güncellenecek veri yolları:", Object.keys(updates));
 
       // Execute the update
       await update(ref(database), updates);
 
       console.log("Tüm değişiklikler başarıyla kaydedildi");
       toast.success("Değişiklikler başarıyla kaydedildi");
+
+      // Değişiklik state'lerini temizle
+      setCustomerChanges({});
+
       onClose();
     } catch (error) {
       console.error("Kaydetme hatası:", error);
@@ -735,7 +791,7 @@ const OrderEditModal = ({
                   WebkitFontSmoothing: "antialiased",
                 }}
               >
-                Sipariş Düzenle - {customer.fullName}
+                Sipariş Düzenle - {localCustomer.fullName}
               </h1>
             </div>
           </div>
@@ -777,7 +833,14 @@ const OrderEditModal = ({
 
                     {/* Card Content - Enhanced Design */}
                     <div className="p-5">
-                      <CustomerInfo customer={customer} />
+                      <CustomerInfo
+                        customer={localCustomer}
+                        isEditing={isEditingCustomer}
+                        setIsEditing={setIsEditingCustomer}
+                        editedData={editedCustomerData}
+                        setEditedData={setEditedCustomerData}
+                        onSave={saveCustomerChanges}
+                      />
                     </div>
                   </div>
                 </div>
@@ -803,7 +866,7 @@ const OrderEditModal = ({
                           strokeLinecap="round"
                           strokeLinejoin="round"
                           strokeWidth="1.5"
-                          d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"
+                          d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9h3m-3 4h3m-6-4h.01M9 16h.01"
                         />
                       </svg>
                       Sipariş Detayları
@@ -1025,6 +1088,7 @@ const OrderEditModal = ({
 OrderEditModal.propTypes = {
   isOpen: PropTypes.bool.isRequired,
   onClose: PropTypes.func.isRequired,
+  onCustomerUpdate: PropTypes.func, // Yeni prop ekleyelim
   customer: PropTypes.shape({
     id: PropTypes.string.isRequired, // Add this line
     fullName: PropTypes.string.isRequired,

@@ -1,128 +1,135 @@
+import { useEffect } from "react";
 import PropTypes from "prop-types";
 
-const CustomerInfo = ({ customer }) => {
-  const { fullName, email, phone, message } = customer;
+const CustomerInfo = ({
+  customer,
+  isEditing,
+  setIsEditing,
+  editedData,
+  setEditedData,
+  onSave,
+}) => {
+  // Düzenleme moduna geçildiğinde müşteri verilerini editedData'ya kopyala
+  useEffect(() => {
+    if (isEditing) {
+      setEditedData({ ...customer });
+    }
+  }, [isEditing, customer, setEditedData]);
 
-  // Info item component for consistent styling
-  const InfoItem = ({ icon, label, value }) => (
-    <div className="flex items-start gap-2 mb-1.5 last:mb-0">
-      <div className="mt-0.5 w-3.5 h-3.5 flex-shrink-0 rounded-md bg-indigo-500/20 flex items-center justify-center text-indigo-400">
-        {icon}
-      </div>
-      <div className="flex-1">
-        <div className="text-xs text-gray-500 leading-none">{label}</div>
-        <div className="text-sm text-gray-200 font-medium break-words">
-          {value || "---"}
-        </div>
-      </div>
-    </div>
-  );
-
-  // InfoItem için PropTypes tanımlayalım
-  InfoItem.propTypes = {
-    icon: PropTypes.node.isRequired,
-    label: PropTypes.string.isRequired,
-    value: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
+  // Input değişikliklerini yönet
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setEditedData((prev) => ({
+      ...prev,
+      [name]: value,
+    }));
   };
 
   return (
-    <div className="space-y-2">
-      {/* Main customer info - daha kompakt grid */}
-      <div className="grid gap-2" style={{ gridTemplateColumns: "1fr 1fr" }}>
-        <InfoItem
-          icon={
-            <svg
-              className="w-2.5 h-2.5"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
+    <div className="space-y-4">
+      {!isEditing ? (
+        // Görüntüleme Modu
+        <>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <p className="text-xs text-gray-400 mb-1">Müşteri Adı</p>
+              <p className="text-sm text-gray-200">{customer.fullName}</p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-400 mb-1">Telefon</p>
+              <p className="text-sm text-gray-200">{customer.phone}</p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-400 mb-1">Email</p>
+              <p className="text-sm text-gray-200">{customer.email || "—"}</p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-400 mb-1">Adres</p>
+              <p className="text-sm text-gray-200">{customer.address || "—"}</p>
+            </div>
+          </div>
+          <div>
+            <button
+              onClick={() => setIsEditing(true)}
+              className="flex items-center gap-1.5 text-xs font-medium text-indigo-400 hover:text-indigo-300 transition-colors mt-2"
             >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth="2"
-                d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
+              <svg
+                className="w-3.5 h-3.5"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                  d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"
+                />
+              </svg>
+              Düzenle
+            </button>
+          </div>
+        </>
+      ) : (
+        // Düzenleme Modu
+        <>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="text-xs text-gray-400 mb-1 block">
+                Müşteri Adı
+              </label>
+              <input
+                name="fullName"
+                value={editedData.fullName || ""}
+                onChange={handleChange}
+                className="w-full bg-gray-800/50 border border-gray-700/50 rounded-md px-3 py-1.5 text-sm text-gray-200 focus:outline-none focus:ring-1 focus:ring-indigo-500"
               />
-            </svg>
-          }
-          label="Müşteri Adı"
-          value={fullName}
-        />
-
-        <InfoItem
-          icon={
-            <svg
-              className="w-2.5 h-2.5"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
+            </div>
+            <div>
+              <label className="text-xs text-gray-400 mb-1 block">
+                Telefon
+              </label>
+              <input
+                name="phone"
+                value={editedData.phone || ""}
+                onChange={handleChange}
+                className="w-full bg-gray-800/50 border border-gray-700/50 rounded-md px-3 py-1.5 text-sm text-gray-200 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              />
+            </div>
+            <div>
+              <label className="text-xs text-gray-400 mb-1 block">Email</label>
+              <input
+                name="email"
+                value={editedData.email || ""}
+                onChange={handleChange}
+                className="w-full bg-gray-800/50 border border-gray-700/50 rounded-md px-3 py-1.5 text-sm text-gray-200 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              />
+            </div>
+            <div>
+              <label className="text-xs text-gray-400 mb-1 block">Adres</label>
+              <input
+                name="address"
+                value={editedData.address || ""}
+                onChange={handleChange}
+                className="w-full bg-gray-800/50 border border-gray-700/50 rounded-md px-3 py-1.5 text-sm text-gray-200 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              />
+            </div>
+          </div>
+          <div className="flex items-center gap-3 mt-3">
+            <button
+              onClick={onSave}
+              className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-medium rounded-md transition-colors"
             >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth="2"
-                d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
-              />
-            </svg>
-          }
-          label="E-posta"
-          value={email}
-        />
-
-        <InfoItem
-          icon={
-            <svg
-              className="w-2.5 h-2.5"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
+              Kaydet
+            </button>
+            <button
+              onClick={() => setIsEditing(false)}
+              className="px-4 py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-300 text-xs font-medium rounded-md transition-colors"
             >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth="2"
-                d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"
-              />
-            </svg>
-          }
-          label="Telefon"
-          value={phone}
-        />
-
-        {/* Rozetleri grid içine taşıyalım */}
-        <div className="flex items-center gap-1.5">
-          <span className="text-xs px-1.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
-            Aktif
-          </span>
-          {customer.isVIP && (
-            <span className="text-xs px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/30">
-              VIP
-            </span>
-          )}
-        </div>
-      </div>
-
-      {/* Sipariş notunu ayrı bırakalım ama daha kompakt hale getirelim */}
-      {message && (
-        <InfoItem
-          icon={
-            <svg
-              className="w-2.5 h-2.5"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth="2"
-                d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z"
-              />
-            </svg>
-          }
-          label="Sipariş Notu"
-          value={message}
-        />
+              İptal
+            </button>
+          </div>
+        </>
       )}
     </div>
   );
@@ -130,12 +137,17 @@ const CustomerInfo = ({ customer }) => {
 
 CustomerInfo.propTypes = {
   customer: PropTypes.shape({
-    fullName: PropTypes.string.isRequired,
-    email: PropTypes.string,
+    fullName: PropTypes.string,
     phone: PropTypes.string,
-    message: PropTypes.string,
-    isVIP: PropTypes.bool,
+    email: PropTypes.string,
+    address: PropTypes.string,
+    id: PropTypes.string,
   }).isRequired,
+  isEditing: PropTypes.bool,
+  setIsEditing: PropTypes.func,
+  editedData: PropTypes.object,
+  setEditedData: PropTypes.func,
+  onSave: PropTypes.func,
 };
 
 export default CustomerInfo;

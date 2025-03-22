@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useMemo, useState } from "react";
 import PropTypes from "prop-types";
-import { calculatePrice } from "../../utils/priceCalculator";
 import { useDimensionsStore } from "../../store/dimensionsStore";
 
 const BonusItems = ({

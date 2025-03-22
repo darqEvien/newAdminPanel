@@ -1271,5 +1271,3 @@ OrderDetails.propTypes = {
 };
 
 export default OrderDetails;
-
-// Dimensions değişikliklerini tespit edip, dinamik fiyatları güncelleyecek effect ekleyin
