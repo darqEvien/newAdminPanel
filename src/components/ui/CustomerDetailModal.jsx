@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { ref, get, set, update } from "firebase/database";
 import { database } from "../../firebase/firebaseConfig";
 import OrderEditModal from "./OrderEditModal";
+import PdfModal from "./PdfModal";
 
 const ensureNotesArray = (notes) => {
   if (!notes) return [];
@@ -44,7 +45,21 @@ const CustomerDetailModal = ({ isOpen, onClose, customer }) => {
   const [showCustomerOrders, setShowCustomerOrders] = useState(false);
   const [availableCustomers, setAvailableCustomers] = useState([]);
   // const [selectedOrder, setSelectedOrder] = useState(null);
+  // CustomerDetailModal bileşeninin başında diğer state'ler yanına ekleyin
+  const [isPdfModalOpen, setPdfModalOpen] = useState(false);
+  const [pdfOrderData, setPdfOrderData] = useState({
+    orderKey: null,
+    isMainOrder: true,
+  });
 
+  // PDF modalını açmak için fonksiyon
+  const handleOpenPdfModal = (orderKey, isMainOrder = true) => {
+    setPdfOrderData({
+      orderKey,
+      isMainOrder,
+    });
+    setPdfModalOpen(true);
+  };
   // Mevcut siparişleri getiren fonksiyon
   const fetchAvailableCustomers = async () => {
     try {
@@ -661,11 +676,35 @@ const CustomerDetailModal = ({ isOpen, onClose, customer }) => {
                 </svg>
               </button>
 
-              {order.pdfUrl && (
+              {order.pdfUrl ? (
                 <button
-                  onClick={() => window.open(order.pdfUrl, "_blank")}
-                  className="text-gray-400 hover:text-green-400 p-1.5 hover:bg-green-400/10 rounded-md transition-colors"
-                  title="PDF'i Aç"
+                  onClick={() =>
+                    handleOpenPdfModal(order.key, order.type === "main")
+                  }
+                  className="text-gray-400 hover:text-red-400 p-1.5 hover:bg-red-400/10 rounded-md transition-colors"
+                  title="PDF Yönetimi"
+                >
+                  <svg
+                    className="w-3.5 h-3.5"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth="2"
+                      d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"
+                    />
+                  </svg>
+                </button>
+              ) : (
+                <button
+                  onClick={() =>
+                    handleOpenPdfModal(order.key, order.type === "main")
+                  }
+                  className="text-gray-400 hover:text-red-400 p-1.5 hover:bg-red-400/10 rounded-md transition-colors"
+                  title="PDF Oluştur"
                 >
                   <svg
                     className="w-3.5 h-3.5"
@@ -1266,6 +1305,16 @@ const CustomerDetailModal = ({ isOpen, onClose, customer }) => {
           initialDimensions={editingOrder.initialDimensions}
           isMainOrder={editingOrder.isMainOrder}
           customerId={editingOrder.customerId}
+        />
+      )}
+      {/* PDF Modal */}
+      {isPdfModalOpen && (
+        <PdfModal
+          isOpen={isPdfModalOpen}
+          onClose={() => setPdfModalOpen(false)}
+          customer={customer}
+          orderKey={pdfOrderData.orderKey}
+          isMainOrder={pdfOrderData.isMainOrder}
         />
       )}
     </>
