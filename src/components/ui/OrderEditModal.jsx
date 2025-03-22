@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { Dialog, DialogContent } from "./dialogForCustomers";
-import { ref, get, set } from "firebase/database";
+import { ref, get, set, update } from "firebase/database";
 import { database } from "../../firebase/firebaseConfig";
 import { toast } from "react-toastify";
 import OrderDetails from "./OrderDetails";
@@ -15,9 +15,9 @@ import { useDimensionsStore } from "../../store/dimensionsStore"; // Import as n
 const OrderEditModal = ({
   isOpen,
   onClose,
-  customer,
+  customer = {}, // Add default empty object
   orderKey,
-  orderData,
+  orderData = {}, // Add default empty object
   initialDimensions,
   isMainOrder = true,
   customerId = null,
@@ -57,6 +57,24 @@ const OrderEditModal = ({
       if (!isOpen) return;
 
       try {
+        // Ana siparişler ve diğer siparişler için doğru yollar belirleniyor
+        const mainCustomerId = isMainOrder ? orderKey : customerId;
+
+        const bonusPath = isMainOrder
+          ? `customers/${mainCustomerId}/bonus`
+          : `customers/${mainCustomerId}/otherOrders/${orderKey}/bonus`;
+
+        const notesPath = isMainOrder
+          ? `customers/${mainCustomerId}/notes`
+          : `customers/${mainCustomerId}/otherOrders/${orderKey}/notes`;
+
+        console.log("Veri yükleniyor:", {
+          isMainOrder,
+          mainCustomerId,
+          bonusPath,
+          notesPath,
+        });
+
         const [
           categoriesSnapshot,
           productsSnapshot,
@@ -65,8 +83,8 @@ const OrderEditModal = ({
         ] = await Promise.all([
           get(ref(database, "categories")),
           get(ref(database, "products")),
-          get(ref(database, `customers/${orderKey}/bonus`)),
-          get(ref(database, `customers/${orderKey}/notes`)),
+          get(ref(database, bonusPath)),
+          get(ref(database, notesPath)),
         ]);
 
         if (categoriesSnapshot.exists()) {
@@ -87,8 +105,7 @@ const OrderEditModal = ({
     };
 
     fetchInitialData();
-  }, [isOpen, orderKey]);
-
+  }, [isOpen, orderKey, customerId, isMainOrder]);
   // İlk yüklemede dimensions'ı Zustand store'una aktar
   const initializedRef = useRef(false);
   const firstLoadRef = useRef(true); // Yeni ref ekleyin
@@ -422,28 +439,130 @@ const OrderEditModal = ({
   };
 
   // Ana kaydetme fonksiyonu
+
   const handleSaveChanges = async () => {
     try {
-      // Güncel boyutları al
+      if (!customer || !customer.id) {
+        console.error("Customer data is missing");
+        toast.error("Müşteri bilgileri eksik, lütfen sayfayı yenileyin.");
+        return;
+      }
+      // Calculate current dimensions and total price
       const currentDimensions = getAllDimensions();
+      const { dimensions, ...productsData } = localOrderData;
 
-      // Kaydet
-      const finalOrderData = {
-        ...localOrderData,
-        dimensions: currentDimensions,
-      };
+      // Calculate total price from order items
+      let totalPrice = calculateTotalPrice(productsData, savedItems);
 
-      await Promise.all([
-        set(ref(database, `customers/${orderKey}/products/0`), finalOrderData),
-        set(ref(database, `customers/${orderKey}/bonus`), savedItems),
-        set(ref(database, `customers/${orderKey}/notes`), notes),
-      ]);
+      // CRITICAL FIX: Make sure we're using the correct customer ID
+      // For main orders, customerId should be derived from customer.id
+      const targetCustomerId = isMainOrder ? customer.id : customerId;
 
+      console.log("Customer info:", {
+        providedOrderKey: orderKey,
+        customerIdProp: customerId,
+        customerId: customer.id,
+        isMainOrder,
+        usingId: targetCustomerId,
+      });
+
+      // Create updates object
+      const updates = {};
+
+      if (isMainOrder) {
+        // Main order updates - use customer.id as the path
+        updates[`customers/${targetCustomerId}/products/0`] = productsData;
+        updates[`customers/${targetCustomerId}/dimensions`] = currentDimensions;
+        updates[`customers/${targetCustomerId}/bonus`] = savedItems;
+        updates[`customers/${targetCustomerId}/totalPrice`] = totalPrice;
+
+        console.log(
+          "Ana sipariş güncellemesi için path:",
+          `customers/${targetCustomerId}`
+        );
+      } else {
+        // Other orders - use customerId as the parent path and orderKey to identify the specific order
+        updates[
+          `customers/${targetCustomerId}/otherOrders/${orderKey}/products`
+        ] = productsData;
+        updates[
+          `customers/${targetCustomerId}/otherOrders/${orderKey}/dimensions`
+        ] = currentDimensions;
+        updates[`customers/${targetCustomerId}/otherOrders/${orderKey}/bonus`] =
+          savedItems;
+        updates[
+          `customers/${targetCustomerId}/otherOrders/${orderKey}/totalPrice`
+        ] = totalPrice;
+
+        console.log(
+          "Diğer sipariş güncellemesi için path:",
+          `customers/${targetCustomerId}/otherOrders/${orderKey}`
+        );
+      }
+
+      // Add debug logging
+      console.log("Toplam fiyat:", totalPrice);
+      console.log("Güncellenecek veri yolları:", Object.keys(updates));
+
+      // Execute the update
+      await update(ref(database), updates);
+
+      console.log("Tüm değişiklikler başarıyla kaydedildi");
+      toast.success("Değişiklikler başarıyla kaydedildi");
       onClose();
     } catch (error) {
-      console.error("Error saving changes:", error);
+      console.error("Kaydetme hatası:", error);
       toast.error("Değişiklikler kaydedilirken bir hata oluştu.");
     }
+  };
+
+  // Helper function to calculate total price consistently
+  const calculateTotalPrice = (productsData, bonusItems) => {
+    let total = 0;
+
+    // Add product prices - make sure to skip non-product fields
+    Object.entries(productsData).forEach(([categoryName, categoryProducts]) => {
+      // Skip non-product properties
+      if (
+        typeof categoryProducts !== "object" ||
+        [
+          "status",
+          "verandaWidth",
+          "verandaHeight",
+          "dimensions",
+          "kontiWidth",
+          "kontiHeight",
+          "notes",
+          "anaWidth",
+          "anaHeight",
+        ].includes(categoryName)
+      ) {
+        return;
+      }
+
+      // Process product entries
+      Object.values(categoryProducts).forEach((product) => {
+        if (product?.price) {
+          // Ensure price is a number and handle floating point precision
+          const price = Number(parseFloat(product.price).toFixed(2));
+          total += price || 0;
+        }
+      });
+    });
+
+    // Add bonus item prices
+    if (Array.isArray(bonusItems)) {
+      bonusItems.forEach((item) => {
+        if (item?.price) {
+          // Ensure price is a number and handle floating point precision
+          const itemPrice = Number(parseFloat(item.price).toFixed(2));
+          total += itemPrice || 0;
+        }
+      });
+    }
+
+    // Return with consistent formatting (2 decimal places)
+    return Number(total.toFixed(2));
   };
   // useEffect içinde arka planı kontrol etme ve temizleme
 
@@ -669,6 +788,7 @@ OrderEditModal.propTypes = {
   isOpen: PropTypes.bool.isRequired,
   onClose: PropTypes.func.isRequired,
   customer: PropTypes.shape({
+    id: PropTypes.string.isRequired, // Add this line
     fullName: PropTypes.string.isRequired,
     email: PropTypes.string,
     phone: PropTypes.string,

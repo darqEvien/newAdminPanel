@@ -8,13 +8,31 @@ const OrderSummary = ({ orderData, savedItems, onSave, onCancel }) => {
   const [prevGrandTotal, setPrevGrandTotal] = useState(0);
   const firstRender = useRef(true);
   const valuesChanged = useRef(false);
-
   const calculateOrderTotal = () => {
     let total = 0;
-    Object.values(orderData).forEach((products) => {
-      Object.values(products).forEach((product) => {
-        if (typeof product.price === "number") {
-          total += product.price;
+    Object.entries(orderData).forEach(([categoryName, categoryProducts]) => {
+      // Skip non-product properties
+      if (
+        typeof categoryProducts !== "object" ||
+        [
+          "status",
+          "verandaWidth",
+          "verandaHeight",
+          "dimensions",
+          "kontiWidth",
+          "kontiHeight",
+          "notes",
+          "anaWidth",
+          "anaHeight",
+        ].includes(categoryName)
+      ) {
+        return;
+      }
+
+      // Process product entries
+      Object.values(categoryProducts).forEach((product) => {
+        if (product?.price) {
+          total += Number(product.price) || 0;
         }
       });
     });

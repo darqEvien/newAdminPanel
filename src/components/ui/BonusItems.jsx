@@ -962,7 +962,6 @@ const BonusItems = ({
         // Zaten localOrderData'da varsa filtreleme
         const categoryName = category.propertyName;
         const shouldExclude =
-          localOrderData[categoryName] || // Normal kategoriler
           (categoryName.toLowerCase() === "konti" && localOrderData["konti"]) || // Konti
           (categoryName.toLowerCase().includes("en") && localOrderData["en"]) || // En kategorileri
           (categoryName.toLowerCase().includes("boy") && localOrderData["boy"]); // Boy kategorileri

@@ -4,7 +4,6 @@ import { useState, useEffect } from "react";
 import { ref, get, set, update } from "firebase/database";
 import { database } from "../../firebase/firebaseConfig";
 import OrderEditModal from "./OrderEditModal";
-import ReactDOM from "react-dom";
 
 const ensureNotesArray = (notes) => {
   if (!notes) return [];
@@ -143,20 +142,47 @@ const CustomerDetailModal = ({ isOpen, onClose, customer }) => {
     orderData,
     dimensions,
     sourceCustomer = null,
-    orderType = "main" // Add this parameter
+    orderType = "main"
   ) => {
-    setEditingOrder({
-      key: orderKey,
-      data: orderData,
-      dimensions: dimensions || customer.dimensions,
-      // sourceCustomer varsa onu kullan, yoksa ana müşteri bilgilerini kullan
-      sourceCustomer: sourceCustomer || {
-        fullName: customer.fullName,
-        email: customer.email,
-        phone: customer.phone,
-      },
-      type: orderType, // Add this property
-    });
+    // For main orders, explicitly use customer from props
+    if (orderType === "main") {
+      console.log("Editing main order:", {
+        customerId: customer.id,
+        orderData,
+      });
+
+      setEditingOrder({
+        isOpen: true,
+        customer: customer, // Use the customer prop directly
+        orderKey: customer.id, // Use customer.id as orderKey for main orders
+        orderData: orderData || {}, // Ensure orderData is not undefined
+        initialDimensions: dimensions || {}, // Use initialDimensions instead of dimensions
+        isMainOrder: true,
+      });
+    } else {
+      // For other orders
+      console.log("Editing other order:", {
+        orderKey,
+        customerId: customer.id,
+        orderData,
+      });
+
+      // Create a proper customer object that includes the ID
+      const orderCustomer = {
+        ...(sourceCustomer || {}),
+        id: customer.id, // Always include the original customer ID
+      };
+
+      setEditingOrder({
+        isOpen: true,
+        customer: orderCustomer, // Use the enhanced customer object
+        orderKey: orderKey || "",
+        orderData: orderData || {}, // Ensure orderData is not undefined
+        initialDimensions: dimensions || {}, // Use initialDimensions instead of dimensions
+        isMainOrder: false,
+        customerId: customer.id,
+      });
+    }
   };
   // Add toggle function for note dates
   const toggleNoteDate = (date) => {
@@ -1232,14 +1258,14 @@ const CustomerDetailModal = ({ isOpen, onClose, customer }) => {
       {/* Edit Order Modal */}
       {editingOrder && (
         <OrderEditModal
-          isOpen={!!editingOrder}
+          isOpen={editingOrder.isOpen}
           onClose={() => setEditingOrder(null)}
-          customer={editingOrder.sourceCustomer}
-          orderKey={editingOrder.key}
-          orderData={editingOrder.data}
-          initialDimensions={editingOrder.dimensions}
-          isMainOrder={editingOrder.type !== "other"} // Add this line
-          customerId={customer.id} // Add this line
+          customer={editingOrder.customer}
+          orderKey={editingOrder.orderKey}
+          orderData={editingOrder.orderData || {}}
+          initialDimensions={editingOrder.initialDimensions}
+          isMainOrder={editingOrder.isMainOrder}
+          customerId={editingOrder.customerId}
         />
       )}
     </>
