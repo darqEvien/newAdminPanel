@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { Dialog, DialogContent } from "./dialogForCustomers";
 import { ref, get, set, update } from "firebase/database";
 import { database } from "../../firebase/firebaseConfig";
@@ -12,6 +12,8 @@ import PropTypes from "prop-types";
 import { calculatePrice } from "../../utils/priceCalculator";
 import { useDimensionsStore } from "../../store/dimensionsStore"; // Import as named export
 
+import { trackOrderChanges } from "../../utils/changeTracker";
+import ChangelogHistory from "./ChangelogHistory";
 const OrderEditModal = ({
   isOpen,
   onClose,
@@ -43,14 +45,90 @@ const OrderEditModal = ({
   const [shouldRecalcPrices, setShouldRecalcPrices] = useState(false);
   // İlk yükleme için hesaplama atlama bayrağı ekleniyor
   const [skipInitialCalc, setSkipInitialCalc] = useState(true);
+  const [activePanel, setActivePanel] = useState("notes"); // 'notes' veya 'changelog'
 
   // OrderDetails state'leri
   const [editingItem, setEditingItem] = useState(null);
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [editingValues, setEditingValues] = useState({ name: "", price: "0" });
+  const [originalOrderData, setOriginalOrderData] = useState(null);
+  const [originalBonusItems, setOriginalBonusItems] = useState([]);
+
+  const [orderChanges, setOrderChanges] = useState({
+    addedProducts: [],
+    removedProducts: [],
+    priceChanges: [],
+  });
 
   // İkisi arasında bağlantı kurmak için useCallback ve useState ekleyin
+  useEffect(() => {
+    if (isOpen && orderData) {
+      // Derin kopya oluştur
+      setOriginalOrderData(JSON.parse(JSON.stringify(orderData)));
+    }
+  }, [isOpen, orderData]);
+  // originalBonusItems'ı doğru şekilde kullanmak için computeChanges fonksiyonunu düzeltelim
 
+  const computeChanges = useCallback(() => {
+    if (!originalOrderData || !localOrderData) {
+      console.log("originalOrderData veya localOrderData eksik");
+      return {
+        addedProducts: [],
+        removedProducts: [],
+        priceChanges: [],
+      };
+    }
+
+    try {
+      // Derin kopyalarını oluştur
+      const originalClone = JSON.parse(JSON.stringify(originalOrderData));
+
+      // ÖNEMLİ: Orijinal bonus öğelerini ekleyelim
+      originalClone.bonus = originalBonusItems || [];
+
+      // ÖNEMLİ: İlk boyut değerlerini orijinal olarak sakla
+      originalClone.dimensions = initialDimensions || {};
+
+      const localClone = JSON.parse(JSON.stringify(localOrderData));
+
+      // Güncel bonus öğelerini ekle
+      localClone.bonus = savedItems || [];
+
+      console.log("Değişiklikler hesaplanıyor:", {
+        original: {
+          ...originalClone,
+          bonus: originalClone.bonus.map((item) => ({
+            product: item.product,
+            price: item.price,
+          })),
+        },
+        updated: {
+          ...localClone,
+          bonus: localClone.bonus.map((item) => ({
+            product: item.product,
+            price: item.price,
+          })),
+        },
+      });
+
+      return trackOrderChanges(originalClone, localClone, categories);
+    } catch (error) {
+      console.error("Değişiklik hesaplama hatası:", error);
+      return {
+        addedProducts: [],
+        removedProducts: [],
+        priceChanges: [],
+        error: error.message,
+      };
+    }
+  }, [
+    originalOrderData,
+    localOrderData,
+    categories,
+    savedItems,
+    originalBonusItems,
+    initialDimensions,
+  ]);
   // İlk veri yüklemesi
   useEffect(() => {
     const fetchInitialData = async () => {
@@ -94,7 +172,15 @@ const OrderEditModal = ({
           setProducts(productsSnapshot.val());
         }
         if (bonusSnapshot.exists()) {
-          setSavedItems(bonusSnapshot.val() || []);
+          const bonusItems = bonusSnapshot.val() || [];
+          console.log("Yüklenen bonus öğeleri:", bonusItems);
+          setSavedItems(bonusItems);
+          // Orijinal bonus öğelerini de sakla - derin kopya oluştur
+          setOriginalBonusItems(JSON.parse(JSON.stringify(bonusItems)));
+        } else {
+          console.log("Bonus öğeleri bulunamadı");
+          setSavedItems([]);
+          setOriginalBonusItems([]);
         }
         if (notesSnapshot.exists()) {
           setNotes(notesSnapshot.val() || "");
@@ -437,10 +523,7 @@ const OrderEditModal = ({
       setShouldRecalcPrices(false);
     }
   };
-
-  // Ana kaydetme fonksiyonu
-
-  const handleSaveChanges = async () => {
+  const saveOrder = async () => {
     try {
       if (!customer || !customer.id) {
         console.error("Customer data is missing");
@@ -469,12 +552,76 @@ const OrderEditModal = ({
       // Create updates object
       const updates = {};
 
+      // Değişiklik varsa changelog'ı da kaydet
+      const changes = computeChanges();
+      const hasSignificantChanges =
+        (changes.addedProducts && changes.addedProducts.length > 0) ||
+        (changes.removedProducts && changes.removedProducts.length > 0) ||
+        (changes.priceChanges && changes.priceChanges.length > 0) ||
+        changes.dimensionsChange ||
+        changes.priceChange;
+
+      if (hasSignificantChanges) {
+        // Changelog'a tarih ekle
+        const changelogEntry = {
+          ...changes,
+          timestamp: Date.now(),
+          formattedDate: new Date().toLocaleDateString("tr-TR"),
+          formattedTime: new Date().toLocaleTimeString("tr-TR"),
+        };
+
+        if (isMainOrder) {
+          // Changelog path oluştur - ana sipariş
+          const changelogPath = `customers/${targetCustomerId}/changelog`;
+
+          // Önce mevcut changelog'ı al
+          const changelogRef = ref(database, changelogPath);
+          const snapshot = await get(changelogRef);
+
+          let existingChangelog = [];
+          if (snapshot.exists()) {
+            existingChangelog = snapshot.val();
+            if (!Array.isArray(existingChangelog)) {
+              existingChangelog = [existingChangelog];
+            }
+          }
+
+          // En son değişiklikleri ekle
+          existingChangelog.push(changelogEntry);
+
+          // Changelog'ı güncelle
+          updates[changelogPath] = existingChangelog;
+        } else {
+          // Changelog path oluştur - alt sipariş
+          const changelogPath = `customers/${targetCustomerId}/otherOrders/${orderKey}/changelog`;
+
+          // Önce mevcut changelog'ı al
+          const changelogRef = ref(database, changelogPath);
+          const snapshot = await get(changelogRef);
+
+          let existingChangelog = [];
+          if (snapshot.exists()) {
+            existingChangelog = snapshot.val();
+            if (!Array.isArray(existingChangelog)) {
+              existingChangelog = [existingChangelog];
+            }
+          }
+
+          // En son değişiklikleri ekle
+          existingChangelog.push(changelogEntry);
+
+          // Changelog'ı güncelle
+          updates[changelogPath] = existingChangelog;
+        }
+      }
+
       if (isMainOrder) {
         // Main order updates - use customer.id as the path
         updates[`customers/${targetCustomerId}/products/0`] = productsData;
         updates[`customers/${targetCustomerId}/dimensions`] = currentDimensions;
         updates[`customers/${targetCustomerId}/bonus`] = savedItems;
         updates[`customers/${targetCustomerId}/totalPrice`] = totalPrice;
+        updates[`customers/${targetCustomerId}/notes`] = notes;
 
         console.log(
           "Ana sipariş güncellemesi için path:",
@@ -493,6 +640,8 @@ const OrderEditModal = ({
         updates[
           `customers/${targetCustomerId}/otherOrders/${orderKey}/totalPrice`
         ] = totalPrice;
+        updates[`customers/${targetCustomerId}/otherOrders/${orderKey}/notes`] =
+          notes;
 
         console.log(
           "Diğer sipariş güncellemesi için path:",
@@ -755,14 +904,103 @@ const OrderEditModal = ({
             {/* Right Panel - Notes Section */}
             <div className="w-[320px] flex flex-col h-full bg-gray-900/60 backdrop-blur-lg border-l border-gray-800/30">
               <div className="flex flex-col h-full">
-                <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
-                  <OrderNotes
-                    orderKey={orderKey}
-                    isMainOrder={isMainOrder}
-                    customerId={customerId}
-                    notes={notes}
-                    setNotes={setNotes}
-                  />
+                {/* Panel Header */}
+                <div className="flex items-center justify-between p-4 border-b border-gray-800/30">
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={() => setActivePanel("notes")}
+                      className={`flex items-center gap-2 py-1 px-2.5 rounded-md transition-colors ${
+                        activePanel === "notes"
+                          ? "bg-indigo-500/20 text-indigo-300"
+                          : "text-gray-400 hover:text-gray-300 hover:bg-gray-800/50"
+                      }`}
+                    >
+                      <svg
+                        className="w-4 h-4"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth="2"
+                          d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+                        />
+                      </svg>
+                      <span className="text-sm">Notlar</span>
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        // Değişiklikleri hesapla
+                        const changes = computeChanges();
+                        setOrderChanges(changes);
+                        setActivePanel("changelog");
+                      }}
+                      className={`flex items-center gap-2 py-1 px-2.5 rounded-md transition-colors ${
+                        activePanel === "changelog"
+                          ? "bg-blue-500/20 text-blue-300"
+                          : "text-gray-400 hover:text-gray-300 hover:bg-gray-800/50"
+                      }`}
+                    >
+                      <svg
+                        className={`w-4 h-4 transition-all duration-300`}
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth="2"
+                          d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"
+                        />
+                      </svg>
+                      <span className="text-sm">Değişiklikler</span>
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex-1 overflow-y-auto custom-scrollbar">
+                  {/* Notes Panel */}
+                  <div
+                    className={
+                      activePanel === "notes" ? "block h-full" : "hidden"
+                    }
+                  >
+                    <div className="p-4">
+                      <OrderNotes
+                        orderKey={orderKey}
+                        isMainOrder={isMainOrder}
+                        customerId={customerId}
+                        notes={notes}
+                        setNotes={setNotes}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Changelog Panel */}
+                  <div
+                    className={
+                      activePanel === "changelog" ? "block h-full" : "hidden"
+                    }
+                  >
+                    {/* İçerik */}
+                    <div
+                      className={
+                        activePanel === "changelog" ? "block h-full" : "hidden"
+                      }
+                    >
+                      {/* Mod seçim butonlarını kaldırın */}
+                      {/* Doğrudan ChangelogHistory gösterin */}
+                      <ChangelogHistory
+                        customerId={customerId || customer.id}
+                        orderKey={orderKey}
+                        isMainOrder={isMainOrder}
+                      />
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -774,7 +1012,7 @@ const OrderEditModal = ({
           <OrderSummary
             orderData={localOrderData}
             savedItems={savedItems}
-            onSave={handleSaveChanges}
+            onSave={saveOrder}
             onCancel={onClose}
           />
         </div>
