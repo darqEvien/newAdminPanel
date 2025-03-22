@@ -40,7 +40,7 @@ const OrderEditModal = ({
   const [categories, setCategories] = useState({});
   const [products, setProducts] = useState({});
   const [localOrderData, setLocalOrderData] = useState(orderData);
-  const [savedItems, setSavedItems] = useState([]);
+  const [localBonusData, setLocalBonusData] = useState([]);
   const [notes, setNotes] = useState(orderData.notes || "");
   const [shouldRecalcPrices, setShouldRecalcPrices] = useState(false);
   // İlk yükleme için hesaplama atlama bayrağı ekleniyor
@@ -98,7 +98,7 @@ const OrderEditModal = ({
       const localClone = JSON.parse(JSON.stringify(localOrderData));
 
       // Güncel bonus öğelerini ekle
-      localClone.bonus = savedItems || [];
+      localClone.bonus = localBonusData || [];
 
       // Ürünlerdeki değişiklikleri hesapla
       const productChanges = trackOrderChanges(
@@ -141,7 +141,7 @@ const OrderEditModal = ({
     originalOrderData,
     localOrderData,
     categories,
-    savedItems,
+    localBonusData,
     originalBonusItems,
     initialDimensions,
     customerChanges,
@@ -192,12 +192,12 @@ const OrderEditModal = ({
         if (bonusSnapshot.exists()) {
           const bonusItems = bonusSnapshot.val() || [];
           console.log("Yüklenen bonus öğeleri:", bonusItems);
-          setSavedItems(bonusItems);
+          setLocalBonusData(bonusItems);
           // Orijinal bonus öğelerini de sakla - derin kopya oluştur
           setOriginalBonusItems(JSON.parse(JSON.stringify(bonusItems)));
         } else {
           console.log("Bonus öğeleri bulunamadı");
-          setSavedItems([]);
+          setLocalBonusData([]);
           setOriginalBonusItems([]);
         }
         if (notesSnapshot.exists()) {
@@ -589,7 +589,7 @@ const OrderEditModal = ({
       const { dimensions, ...productsData } = localOrderData;
 
       // Calculate total price from order items
-      let totalPrice = calculateTotalPrice(productsData, savedItems);
+      let totalPrice = calculateTotalPrice(productsData, localBonusData);
 
       // CRITICAL FIX: Make sure we're using the correct customer ID
       const targetCustomerId = isMainOrder ? customer.id : customerId;
@@ -686,7 +686,7 @@ const OrderEditModal = ({
       if (isMainOrder) {
         updates[`customers/${targetCustomerId}/products/0`] = productsData;
         updates[`customers/${targetCustomerId}/dimensions`] = currentDimensions;
-        updates[`customers/${targetCustomerId}/bonus`] = savedItems;
+        updates[`customers/${targetCustomerId}/bonus`] = localBonusData;
         updates[`customers/${targetCustomerId}/totalPrice`] = totalPrice;
         updates[`customers/${targetCustomerId}/notes`] = notes;
       } else {
@@ -697,7 +697,7 @@ const OrderEditModal = ({
           `customers/${targetCustomerId}/otherOrders/${orderKey}/dimensions`
         ] = currentDimensions;
         updates[`customers/${targetCustomerId}/otherOrders/${orderKey}/bonus`] =
-          savedItems;
+          localBonusData;
         updates[
           `customers/${targetCustomerId}/otherOrders/${orderKey}/totalPrice`
         ] = totalPrice;
@@ -775,7 +775,29 @@ const OrderEditModal = ({
   return (
     <Dialog
       open={isOpen}
-      onOpenChange={onClose}
+      onOpenChange={(open) => {
+        if (!open) {
+          // Modal kapanırken state'leri temizle
+          setLocalOrderData({});
+          setLocalBonusData([]);
+          setNotes("");
+          setCustomerChanges({});
+          setEditingItem(null);
+          setSelectedProduct(null);
+          setEditingValues({ name: "", price: "0" });
+
+          // Zustand store'u da temizle
+          initializeDimensions({
+            kontiWidth: 0,
+            kontiHeight: 0,
+            anaWidth: 0,
+            anaHeight: 0,
+          });
+
+          // Modal'ı kapat
+          onClose();
+        }
+      }}
       className="dark-theme-dialog z-[9999]"
     >
       <DialogContent className="max-w-[95vw] w-[95vw] h-[90vh] max-h-[90vh] p-0 flex flex-col bg-gradient-to-br from-gray-950 to-gray-900 border border-gray-800/40 shadow-xl rounded-lg overflow-hidden z-[9999]">
@@ -949,13 +971,12 @@ const OrderEditModal = ({
                         <BonusItems
                           categories={categories}
                           products={products}
-                          localOrderData={localOrderData} // Bu prop'u geçin
-                          savedItems={savedItems}
-                          setSavedItems={setSavedItems}
+                          localOrderData={localOrderData}
+                          localBonusData={localBonusData}
+                          setLocalBonusData={setLocalBonusData}
                           shouldRecalc={shouldRecalcPrices}
                           setShouldRecalcPrices={setShouldRecalcPrices}
                           skipInitialCalc={skipInitialCalc}
-                          isFirstLoad={firstLoadRef.current}
                         />
                       </div>
                     </div>
@@ -1074,7 +1095,7 @@ const OrderEditModal = ({
         <div>
           <OrderSummary
             orderData={localOrderData}
-            savedItems={savedItems}
+            localBonusData={localBonusData}
             onSave={saveOrder}
             onCancel={onClose}
           />

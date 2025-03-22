@@ -859,6 +859,8 @@ const OrderDetails = ({
   );
 
   // Ürün sil
+  // handleDelete fonksiyonunda değişiklik:
+
   const handleDelete = useCallback(
     (categoryName, productIndex) => {
       const productToDelete = localOrderData[categoryName]?.[productIndex];
@@ -871,37 +873,37 @@ const OrderDetails = ({
       if (!category) return;
 
       const isArtisCategory = category?.priceFormat === "artis";
-      const productId = productToDelete.productCollectionId;
 
-      const productFromDB =
-        productId && productId !== "istemiyorum"
-          ? products[categoryName]?.[productId]
-          : null;
-
-      const currentWidth = Number(
-        productFromDB?.width || productToDelete?.width || 0
-      );
-      const currentHeight = Number(
-        productFromDB?.height || productToDelete?.height || 0
-      );
-
-      // Artis kategorisi ise boyutları güncelle
+      // Artis kategorisindeki bir ürünü siliyorsak
       if (isArtisCategory) {
+        // Önce boyutları güncelliyoruz
+        const productId = productToDelete.productCollectionId;
+        const productFromDB =
+          productId && productId !== "istemiyorum"
+            ? products[categoryName]?.[productId]
+            : null;
+
+        const currentWidth = Number(
+          productFromDB?.width || productToDelete?.width || 0
+        );
+        const currentHeight = Number(
+          productFromDB?.height || productToDelete?.height || 0
+        );
+
         let updatedWidth = dimensions.kontiWidth;
         let updatedHeight = dimensions.kontiHeight;
 
+        // En kategorisi ise genişliği güncelle
         if (categoryName.toLowerCase().includes("en") && currentWidth > 0) {
           updatedWidth = Math.max(0, dimensions.kontiWidth - currentWidth);
-        } else if (
+        }
+        // Boy kategorisi ise yüksekliği güncelle
+        else if (
           categoryName.toLowerCase().includes("boy") &&
           currentHeight > 0
         ) {
           updatedHeight = Math.max(0, dimensions.kontiHeight - currentHeight);
         }
-
-        const dimensionsChanged =
-          updatedWidth !== dimensions.kontiWidth ||
-          updatedHeight !== dimensions.kontiHeight;
 
         // Boyutları güncelle
         initializeDimensions({
@@ -911,34 +913,46 @@ const OrderDetails = ({
           anaHeight: updatedHeight,
         });
 
-        // Ürünü sil ve tekrar indeksle
+        // Ürünü sil
         setLocalOrderData((prev) => {
           const newData = { ...prev };
           const updatedCategory = { ...newData[categoryName] };
           delete updatedCategory[productIndex];
 
-          // Kategori tamamen boşaldıysa, tüm kategoriyi sil
-          if (Object.keys(updatedCategory).length === 0) {
-            delete newData[categoryName]; // Boş kategoriyi tamamen kaldır
-          } else {
-            // Kategori hala ürün içeriyorsa, kalan ürünleri yeniden indeksle
-            const reindexed = {};
-            Object.values(updatedCategory).forEach((item, idx) => {
-              reindexed[idx] = item;
-            });
-            newData[categoryName] = reindexed;
-          }
+          // Indeksleri yeniden düzenle
+          const reindexed = {};
+          Object.values(updatedCategory).forEach((item, idx) => {
+            reindexed[idx] = item;
+          });
+
+          newData[categoryName] = reindexed;
+
+          // Boyutları da güncelle
+          newData.dimensions = {
+            ...newData.dimensions,
+            kontiWidth: updatedWidth,
+            kontiHeight: updatedHeight,
+            anaWidth: updatedWidth,
+            anaHeight: updatedHeight,
+          };
 
           return newData;
         });
 
-        // Boyutlar değiştiyse fiyatları yeniden hesapla
-        if (dimensionsChanged) {
-          setShouldRecalcPrices(true);
-          setTimeout(() => setShouldRecalcPrices(false), 300);
-        }
+        // BonusItems'daki ürünlerin fiyatlarını güncelle
+        console.log(
+          "OrderDetails: Artis ürün silindi, BonusItems güncelleniyor"
+        );
+
+        // Fiyat hesaplama bayrağını set et
+        setShouldRecalcPrices(true);
+
+        // Kısa bir gecikmeden sonra bayrağı sıfırla
+        setTimeout(() => {
+          setShouldRecalcPrices(false);
+        }, 300);
       } else {
-        // Artis kategorisi değilse sadece sil ve tekrar indeksle
+        // Artis kategorisi dışındaki ürünleri silme işlemi
         setLocalOrderData((prev) => {
           const newData = { ...prev };
           const updatedCategory = { ...newData[categoryName] };

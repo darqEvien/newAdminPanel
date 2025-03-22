@@ -2,7 +2,7 @@ import PropTypes from "prop-types";
 import CountUp from "react-countup";
 import { useState, useEffect, useRef } from "react";
 
-const OrderSummary = ({ orderData, savedItems, onSave, onCancel }) => {
+const OrderSummary = ({ orderData, localBonusData, onSave, onCancel }) => {
   const [prevOrderTotal, setPrevOrderTotal] = useState(0);
   const [prevBonusTotal, setPrevBonusTotal] = useState(0);
   const [prevGrandTotal, setPrevGrandTotal] = useState(0);
@@ -40,7 +40,7 @@ const OrderSummary = ({ orderData, savedItems, onSave, onCancel }) => {
   };
 
   const calculateBonusTotal = () => {
-    return savedItems.reduce((total, item) => {
+    return localBonusData.reduce((total, item) => {
       return total + (Number(item.price) || 0);
     }, 0);
   };
@@ -255,7 +255,7 @@ const OrderSummary = ({ orderData, savedItems, onSave, onCancel }) => {
 
 OrderSummary.propTypes = {
   orderData: PropTypes.object.isRequired,
-  savedItems: PropTypes.arrayOf(
+  localBonusData: PropTypes.arrayOf(
     PropTypes.shape({
       category: PropTypes.string,
       product: PropTypes.string,

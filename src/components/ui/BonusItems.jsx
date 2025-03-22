@@ -6,8 +6,8 @@ const BonusItems = ({
   categories,
   products,
   localOrderData = {},
-  savedItems,
-  setSavedItems,
+  localBonusData,
+  setLocalBonusData,
   shouldRecalc = false,
   setShouldRecalcPrices = () => {},
   skipInitialCalc = false,
@@ -143,11 +143,11 @@ const BonusItems = ({
 
   // Dinamik fiyatları hesapla - tüm formatlar için
   const recalculateAllDynamicPrices = useCallback(() => {
-    if (isUpdating.current || !savedItems.length) return;
+    if (isUpdating.current || !localBonusData.length) return;
     isUpdating.current = true;
 
     try {
-      const updatedItems = [...savedItems];
+      const updatedItems = [...localBonusData];
       let hasChanges = false;
 
       // Desteklenen tüm dinamik fiyat formatları (artis HARİÇ)
@@ -208,7 +208,7 @@ const BonusItems = ({
 
       // Değişiklik varsa state'i güncelle
       if (hasChanges) {
-        setSavedItems(updatedItems);
+        setLocalBonusData(updatedItems);
       }
     } catch (error) {
       console.error("Dinamik fiyat hesaplaması sırasında hata:", error);
@@ -218,18 +218,18 @@ const BonusItems = ({
       }, 100);
     }
   }, [
-    savedItems,
+    localBonusData,
     getCategoryData,
     getProductData,
     kontiWidth,
     kontiHeight,
-    setSavedItems,
+    setLocalBonusData,
   ]);
 
   // Sadece artis ürünlerin fiyatlarını hesapla
   const recalculateArtisItems = useCallback(
     (syncWithOrderDetails = false) => {
-      if (isUpdating.current || !savedItems.length) return;
+      if (isUpdating.current || !localBonusData.length) return;
       isUpdating.current = true;
 
       try {
@@ -237,7 +237,7 @@ const BonusItems = ({
           `Artis ürünlerin fiyatları hesaplanıyor (OrderDetails sync: ${syncWithOrderDetails})`
         );
 
-        setSavedItems((prevItems) => {
+        setLocalBonusData((prevItems) => {
           const updatedItems = [...prevItems];
           let hasChanges = false;
 
@@ -289,12 +289,12 @@ const BonusItems = ({
       }
     },
     [
-      savedItems,
+      localBonusData,
       getCategoryData,
       calculateArtisPrice,
       kontiWidth,
       kontiHeight,
-      setSavedItems,
+      setLocalBonusData,
     ]
   );
 
@@ -453,7 +453,7 @@ const BonusItems = ({
     }
 
     // Ürünü listeye ekle
-    setSavedItems((prev) => [...prev, itemToAdd]);
+    setLocalBonusData((prev) => [...prev, itemToAdd]);
 
     // Formu sıfırla
     setNewItem({
@@ -472,167 +472,68 @@ const BonusItems = ({
     newItem,
     dimensions,
     updateKontiDimensions,
-    setSavedItems,
+    setLocalBonusData,
     getCategoryData,
   ]);
 
-  // handleDeleteItem fonksiyonunu tamamen değiştirelim
+  // handleDeleteItem fonksiyonunda ürünün doğru silindiğinden emin olmak için
 
   const handleDeleteItem = useCallback(
     (index) => {
-      const itemToDelete = savedItems[index];
+      const itemToDelete = localBonusData[index];
       if (!itemToDelete) return;
 
-      // Silinen ürün bilgilerini kaydet (BST: Boyut Silme İşlemi öncesi)
-      const deletedCategory = itemToDelete.category;
-      const isArtisItem = () => {
-        const category = getCategoryData(deletedCategory);
-        return category?.priceFormat === "artis";
-      };
-      const isEnItem = deletedCategory?.toLowerCase().includes("en");
-      const isBoyItem = deletedCategory?.toLowerCase().includes("boy");
-
-      // Boyutları kaydet (BST: Boyut Silme İşlemi öncesi)
-      const originalWidth = dimensions.kontiWidth;
-      const originalHeight = dimensions.kontiHeight;
-
-      // İşlem sırasında güncellemeleri bloklayalım
-      isUpdating.current = true;
-
-      // 1. Önce öğeyi listeden kaldıralım
-      setSavedItems((prev) => prev.filter((_, i) => i !== index));
+      // İlk olarak öğeyi listeden kaldır (bunu en önce yapalım ki UI hemen güncellensin)
+      setLocalBonusData((prev) => {
+        const updatedItems = [...prev];
+        updatedItems.splice(index, 1); // İndekse göre sil - filter yerine splice kullandım
+        return updatedItems;
+      });
 
       // Silinen öğenin ID'sini kaydet
       if (!deletedItems.current.includes(itemToDelete.id)) {
         deletedItems.current.push(itemToDelete.id);
       }
 
-      // 2. ARTIS KATEGORİSİ İÇİN ÖZEL İŞLEM
+      // Artis kategorisi ise boyutları güncelle
       if (
         !itemToDelete.custom &&
         itemToDelete.productId &&
-        itemToDelete.productId !== "istemiyorum" &&
-        isArtisItem()
+        itemToDelete.productId !== "istemiyorum"
       ) {
-        console.log(
-          `Artis kategorili ${isEnItem ? "EN" : "BOY"} ürünü siliniyor:`,
-          itemToDelete
-        );
+        const categoryName = itemToDelete.category;
+        const category = getCategoryData(categoryName);
 
-        // 3. BOYUTLARI GÜNCELLE - ÖNEMLİ: Önce boyutları güncelle!
-        updateKontiDimensions(itemToDelete, "remove");
+        if (category?.priceFormat === "artis") {
+          console.log(`Artis kategorili ürün siliniyor:`, itemToDelete);
 
-        // 4. BOYUTLAR GÜNCELLENDİKTEN SONRA
-        // ÖNEMLİ: Burada daha uzun bir gecikme kullan ve store'un güncellenmesini bekle
-        setTimeout(() => {
-          // Store'dan güncel boyutları MANUEL olarak al - dimensions reaktif olduğundan hemen güncellenmeyebilir
-          const actualWidth = useDimensionsStore.getState().kontiWidth;
-          const actualHeight = useDimensionsStore.getState().kontiHeight;
+          // Boyutları güncelle
+          updateKontiDimensions(itemToDelete, "remove");
 
-          console.log(
-            `Boyut değişimi (store'dan kontrol): ${originalWidth}x${originalHeight} -> ${actualWidth}x${actualHeight}`
-          );
-
-          // 5. ARTIS ÜRÜNLERİN FİYATLARINI MANUEL GÜNCELLE
-          // Kalan artis ürünlerinin fiyatlarını yeniden hesapla
-          setSavedItems((prevItems) => {
-            // Her bir ürünü kontrol et
-            const updatedItems = prevItems.map((item) => {
-              // Sadece artis kategorisindeki ürünleri güncelle
-              if (
-                !item.custom &&
-                item.productId &&
-                item.productId !== "istemiyorum"
-              ) {
-                const itemCategory = getCategoryData(item.category);
-
-                if (itemCategory?.priceFormat === "artis") {
-                  const itemIsEn = item.category.toLowerCase().includes("en");
-                  const itemIsBoy = item.category.toLowerCase().includes("boy");
-
-                  const productData = getProductData(
-                    item.category,
-                    item.productId
-                  );
-                  if (productData) {
-                    const basePrice = Number(productData.price || 0);
-
-                    // EN ürunü silindiğinde BOY ürünlerini güncelle
-                    if (isEnItem && itemIsBoy) {
-                      const productHeight = Number(productData.height || 0);
-                      // DÜZELTME: Reaktif dimensions yerine store'dan güncel değeri kullan
-                      const newPrice = actualWidth * productHeight * basePrice;
-
-                      console.log(
-                        `BOY ürünü "${item.product}" EN silindikten sonra güncelleniyor:`
-                      );
-                      console.log(
-                        `Eski fiyat: ${item.price}, Yeni fiyat: ${newPrice}`
-                      );
-                      console.log(
-                        `Hesaplama: ${actualWidth} x ${productHeight} x ${basePrice} = ${newPrice}`
-                      );
-
-                      return {
-                        ...item,
-                        price: newPrice,
-                      };
-                    }
-
-                    // BOY ürünü silindiğinde EN ürünlerini güncelle
-                    if (isBoyItem && itemIsEn) {
-                      const productWidth = Number(productData.width || 0);
-                      // DÜZELTME: Reaktif dimensions yerine store'dan güncel değeri kullan
-                      const newPrice = actualHeight * productWidth * basePrice;
-
-                      console.log(
-                        `EN ürünü "${item.product}" BOY silindikten sonra güncelleniyor:`
-                      );
-                      console.log(
-                        `Eski fiyat: ${item.price}, Yeni fiyat: ${newPrice}`
-                      );
-                      console.log(
-                        `Hesaplama: ${actualHeight} x ${productWidth} x ${basePrice} = ${newPrice}`
-                      );
-
-                      return {
-                        ...item,
-                        price: newPrice,
-                      };
-                    }
-                  }
-                }
-              }
-              return item;
-            });
-
-            return updatedItems;
-          });
-
-          // 6. ORDERDETAILS İLE SENKRONİZASYON
-          setShouldRecalcPrices(true);
-
-          // İşlemi tamamla
+          // Boyut güncellemesi sonrası fiyatları tekrar hesapla
           setTimeout(() => {
-            setShouldRecalcPrices(false);
-            isUpdating.current = false;
-            console.log("İşlemler tamamlandı, flags sıfırlandı");
+            // Store'dan güncel boyutları al
+            const actualWidth = useDimensionsStore.getState().kontiWidth;
+            const actualHeight = useDimensionsStore.getState().kontiHeight;
+
+            console.log(`Güncel boyutlar: ${actualWidth}x${actualHeight}`);
+
+            // OrderDetails ile senkronize et
+            setShouldRecalcPrices(true);
+
+            // Sıfırla
+            setTimeout(() => {
+              setShouldRecalcPrices(false);
+            }, 300);
           }, 300);
-        }, 300); // Boyut güncellemesinin tamamlanmasını bekle - süreyi artır
-
-        return;
+        }
       }
-
-      // Artis olmayan ürünler için işlemi bitiriyoruz
-      isUpdating.current = false;
     },
     [
-      savedItems,
+      localBonusData,
       getCategoryData,
-      getProductData,
-      dimensions,
       updateKontiDimensions,
-      setSavedItems,
+      setLocalBonusData,
       setShouldRecalcPrices,
     ]
   );
@@ -696,7 +597,7 @@ const BonusItems = ({
       finalPrice = 0; // Hata durumunda 0 olarak ayarla
     }
     // Orijinal öğeyi al
-    const originalItem = savedItems[editingItem];
+    const originalItem = localBonusData[editingItem];
 
     // Kategori veya ürün değişti mi kontrol et
     const categoryChanged = originalItem.category !== newItem.category;
@@ -744,7 +645,7 @@ const BonusItems = ({
     }
 
     // Listeyi güncelle
-    setSavedItems((prev) => {
+    setLocalBonusData((prev) => {
       const updated = [...prev];
       updated[editingItem] = updatedItem;
       return updated;
@@ -763,11 +664,11 @@ const BonusItems = ({
   }, [
     editingItem,
     newItem,
-    savedItems,
+    localBonusData,
     dimensions,
     getCategoryData,
     updateKontiDimensions,
-    setSavedItems,
+    setLocalBonusData,
   ]);
 
   // Ekleme iptal
@@ -954,29 +855,92 @@ const BonusItems = ({
     }));
   }, []);
 
-  // Kategoriler için dropdown seçenekleri
+  // categoryOptions useMemo fonksiyonunu güncelle:
+
+  // categoryOptions useMemo fonksiyonunda title ve label kullanımını düzeltelim:
+
   const categoryOptions = useMemo(() => {
+    // 1. OrderDetails'da bulunan en/boy kategorilerini kontrol et
+    const existingEnBoyCategories = [];
+
+    // OrderDetails'daki en/boy kategorileri
+    Object.keys(localOrderData || {}).forEach((categoryName) => {
+      if (
+        categoryName.toLowerCase().includes("en") ||
+        categoryName.toLowerCase().includes("boy")
+      ) {
+        // Bu kategoride en az bir aktif ürün var mı kontrol et
+        const categoryProducts = localOrderData[categoryName];
+        // "istemiyorum" dışında ürün varsa listeye ekle
+        const hasActiveProduct = Object.values(categoryProducts || {}).some(
+          (product) =>
+            product &&
+            product.productCollectionId &&
+            product.productCollectionId !== "istemiyorum"
+        );
+
+        if (hasActiveProduct) {
+          existingEnBoyCategories.push(categoryName.toLowerCase());
+        }
+      }
+    });
+
+    // 2. BonusItems'daki mevcut en/boy kategorilerini kontrol et
+    const bonusEnBoyCategories = [];
+
+    localBonusData.forEach((item) => {
+      if (!item.custom && item.category) {
+        const categoryName = item.category.toLowerCase();
+
+        if (
+          (categoryName.includes("en") || categoryName.includes("boy")) &&
+          item.productId &&
+          item.productId !== "istemiyorum"
+        ) {
+          // Aynı kategori var mı diye kontrol et
+          if (!bonusEnBoyCategories.includes(categoryName)) {
+            bonusEnBoyCategories.push(categoryName);
+          }
+        }
+      }
+    });
+
+    // 3. Tüm mevcut kategorileri birleştir
+    const allExistingCategories = [
+      ...existingEnBoyCategories,
+      ...bonusEnBoyCategories,
+    ];
+    console.log("Mevcut tüm En/Boy kategorileri:", allExistingCategories);
+
+    // 4. Kullanılabilir kategorileri filtrele
     const availableCategories = Object.values(categories)
       .filter((category) => {
-        // Zaten localOrderData'da varsa filtreleme
-        const categoryName = category.propertyName;
-        const shouldExclude =
-          (categoryName.toLowerCase() === "konti" && localOrderData["konti"]) || // Konti
-          (categoryName.toLowerCase().includes("en") && localOrderData["en"]) || // En kategorileri
-          (categoryName.toLowerCase().includes("boy") && localOrderData["boy"]); // Boy kategorileri
+        const categoryName = category.propertyName?.toLowerCase();
 
-        return !shouldExclude;
+        // Konti kategorisi ya da zaten var olan en/boy kategorilerini filtrele
+        if (categoryName === "konti" && localOrderData["konti"]) {
+          return false;
+        }
+
+        // Bu en/boy kategorisi zaten kullanılıyor mu?
+        if (
+          (categoryName.includes("en") || categoryName.includes("boy")) &&
+          allExistingCategories.includes(categoryName)
+        ) {
+          return false;
+        }
+
+        return true;
       })
       .sort((a, b) => (a.order || 999) - (b.order || 999))
       .map((category) => ({
         value: category.propertyName,
-        label: category.title || category.propertyName,
+        label: category.title || category.propertyName, // title öncelikli
       }));
 
     return availableCategories;
-  }, [categories, localOrderData]);
-
-  // Seçili kategoriye göre ürün seçenekleri
+  }, [categories, localOrderData, localBonusData]);
+  // productOptions useMemo fonksiyonunu güncelle:
   const productOptions = useMemo(() => {
     const categoryName = newItem.category;
     if (!categoryName || !products[categoryName]) return [];
@@ -984,37 +948,36 @@ const BonusItems = ({
     const options = Object.entries(products[categoryName])
       .map(([id, product]) => ({
         id,
-        name: product.title || product.name,
+        name: product.title || product.name, // title öncelikli
         price: product.price,
+        order: product.order || 999, // order bilgisi eklendi
       }))
-      .sort((a, b) => a.name.localeCompare(b.name));
+      .sort((a, b) => a.order - b.order || a.name.localeCompare(b.name)); // Önce order'a göre, sonra isme göre sırala
 
-    // İstemiyorum seçeneğini ekle
-    if (options.length > 0) {
-      options.unshift({
-        id: "istemiyorum",
-        name: "İstemiyorum",
-        price: 0,
-      });
-    }
+    // İstemiyorum seçeneğini en üste ekle
+    options.unshift({
+      id: "istemiyorum",
+      name: "İstemiyorum",
+      price: 0,
+      order: -1, // En düşük order değeri
+    });
 
     return options;
   }, [newItem.category, products]);
-
   // EFFECT HOOKS - İŞLEVSEL OLARAK GÜNCELLENDİ
 
   // 1. İlk yüklemede boyutları ayarla
   useEffect(() => {
-    if (!initializedRef.current && savedItems.length > 0) {
+    if (!initializedRef.current && localBonusData.length > 0) {
       // İlk yüklemede mevcut boyutları kaydet
       lastDimensions.current = { kontiWidth, kontiHeight };
       initializedRef.current = true;
     }
-  }, [kontiWidth, kontiHeight, savedItems]);
+  }, [kontiWidth, kontiHeight, localBonusData]);
 
   // 2. OrderDetails'dan gelen boyut değişikliklerini izle (shouldRecalc prop'u)
   useEffect(() => {
-    if (shouldRecalc && savedItems.length > 0 && !isUpdating.current) {
+    if (shouldRecalc && localBonusData.length > 0 && !isUpdating.current) {
       console.log(
         "OrderDetails'dan boyut değişikliği sinyali alındı. Fiyatlar güncelleniyor..."
       );
@@ -1029,21 +992,25 @@ const BonusItems = ({
     }
   }, [
     shouldRecalc,
-    savedItems,
+    localBonusData,
     recalculateAllDynamicPrices,
     recalculateArtisItems,
   ]);
 
   // 3. Zustand store'daki değişiklikleri izle
   useEffect(() => {
-    if (needsRecalculation && savedItems.length > 0 && !isUpdating.current) {
+    if (
+      needsRecalculation &&
+      localBonusData.length > 0 &&
+      !isUpdating.current
+    ) {
       console.log("Dimension store'dan recalculation sinyali alındı");
       recalculateAllDynamicPrices();
       resetRecalculationFlag();
     }
   }, [
     needsRecalculation,
-    savedItems,
+    localBonusData,
     recalculateAllDynamicPrices,
     resetRecalculationFlag,
   ]);
@@ -1064,9 +1031,9 @@ const BonusItems = ({
   return (
     <div className="space-y-3">
       {/* Öğe Listesi */}
-      {savedItems.length > 0 && (
+      {localBonusData.length > 0 && (
         <div className="grid grid-cols-1 space-y-0.5">
-          {savedItems.map((item, index) => (
+          {localBonusData.map((item, index) => (
             <div
               key={item.id || index}
               className="bg-gray-800/30 rounded overflow-hidden"
@@ -1221,16 +1188,23 @@ const BonusItems = ({
                     ) : (
                       <>
                         <span
-                          className="text-gray-400 text-[0.75rem] truncate cursor-pointer hover:text-indigo-300 transition-colors duration-150" // cursor-pointer ve hover eklendi
-                          onClick={() => handleEditItem(item, index)} // onClick eklendi
+                          className="text-gray-400 text-[0.75rem] truncate cursor-pointer hover:text-indigo-300 transition-colors duration-150"
+                          onClick={() => handleEditItem(item, index)}
                           style={{
                             textRendering: "optimizeLegibility",
                             WebkitFontSmoothing: "antialiased",
                           }}
                         >
-                          {categoryOptions.find(
-                            (c) => c.value === item.category
-                          )?.label || item.category}
+                          {(() => {
+                            // Kategori adına göre ilgili kategori nesnesini bul
+                            const categoryObj = Object.values(categories).find(
+                              (cat) =>
+                                cat.propertyName?.toLowerCase() ===
+                                item.category?.toLowerCase()
+                            );
+                            // Varsa title'ı, yoksa category adını göster
+                            return categoryObj?.title || item.category;
+                          })()}
                         </span>
                         <span
                           className="text-gray-300 text-[0.75rem] truncate cursor-pointer hover:text-indigo-300 transition-colors duration-150"
@@ -1451,7 +1425,7 @@ const BonusItems = ({
         </div>
       ) : (
         <>
-          {savedItems.length === 0 ? (
+          {localBonusData.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-4 px-3 bg-gray-800/20 rounded-lg border border-gray-700/30">
               <p className="text-gray-400 text-sm">
                 Henüz bonus ürün eklenmemiş
@@ -1512,8 +1486,8 @@ BonusItems.propTypes = {
   categories: PropTypes.object.isRequired,
   products: PropTypes.object.isRequired,
   localOrderData: PropTypes.object.isRequired,
-  savedItems: PropTypes.array.isRequired,
-  setSavedItems: PropTypes.func.isRequired,
+  localBonusData: PropTypes.array.isRequired,
+  setLocalBonusData: PropTypes.func.isRequired,
   shouldRecalc: PropTypes.bool,
   setShouldRecalcPrices: PropTypes.func,
   skipInitialCalc: PropTypes.bool,
